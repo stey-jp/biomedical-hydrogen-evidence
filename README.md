@@ -6,6 +6,9 @@ Open, structured and verifiable evidence for biomedical research on molecular hy
 
 Biomedical Hydrogen Evidenceは、分子状水素に関する生物医学研究を、構造化・検証可能・追跡可能な形で公開するためのオープンなエビデンス基盤です。Phase 1では、Cloudflare Workers、Static Assets、D1、ステートレスRemote MCPを使った軽量な基盤を提供します。
 
+- Official Web: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev
+- Remote MCP: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev/mcp
+
 ## Purpose
 
 目的は、収録研究、データ構造、抽出方法、判定ルール、根拠、検証状態、修正履歴、ソースコードをGitHub上で監査・再現・訂正できるようにすることです。将来2,000報以上の研究を扱える構造を、無料枠で運用しやすい形で整えます。
@@ -163,16 +166,15 @@ Workers Rate Limiting bindingsを検索ロジックから分離しています�
 
 ## Deployment
 
-自動deployは設定していません。初回のみD1を作成し、返されたUUIDを`wrangler.jsonc`のplaceholderへ設定します。
+自動deployは設定していません。公式Cloudflare accountのD1は`wrangler.jsonc`へ設定済みです。
 
 ```sh
 npx wrangler login
-npx wrangler d1 create biomedical-hydrogen-evidence
 npx wrangler d1 migrations apply biomedical-hydrogen-evidence --remote
 npm run deploy
 ```
 
-Productionへsynthetic fixtureを入れる必要はありません。Rate Limitingの`namespace_id`は同一Cloudflare account内で重複しない値に調整してください。
+Phase 1の公式deploymentには検索・詳細・MCPを検証するsynthetic fixtureだけを投入し、実在研究ではないことを全画面で明示します。別のCloudflare accountへ展開する場合だけD1を新規作成して`database_id`を更新し、Rate Limitingの`namespace_id`もaccount内で重複しない値に調整してください。
 
 ## Contributing
 

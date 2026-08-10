@@ -13,8 +13,7 @@
     {
       "binding": "DB",
       "database_name": "biomedical-hydrogen-evidence",
-      // Replace this placeholder after `npx wrangler d1 create biomedical-hydrogen-evidence`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "a40eafd1-2dc5-4c27-a73b-4eb907ae552e",
       "migrations_dir": "migrations"
     }
   ],
