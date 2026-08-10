@@ -12,6 +12,8 @@ Cloudflare Worker
 ├─ /api/v1/* ─┐
 ├─ /mcp ──────┼─ Study service ─ Repository ─ D1
 └─ /healthz ──┘
+
+iOS / Android ── HTTPS GET ──► first-party REST API
 ```
 
 Web、REST、MCPは`searchStudies()`、`getStudy()`、`getEvidence()`を共有し、MCPからRESTへ自己HTTP接続しません。
@@ -31,6 +33,21 @@ generated review manifest + D1 import SQL
 study_candidates (not public search) ── human screening ──► studies
 ```
 
+Phase 3〜5も同じ公開request boundaryの外側です。
+
+```text
+authorized local source bundle
+        │ plan hash + explicit budget approval
+        ▼
+OpenAI / Anthropic / Gemini (independent structured extraction)
+        │ schema validation + exact snippet check
+        ▼
+model results + consensus + Evidence checks
+        │ field-level human review
+        ▼
+D1 structured Evidence + immutable review history
+```
+
 ## Request flow
 
 1. Static filesはWorker application codeを通さず配信する。
@@ -42,7 +59,7 @@ study_candidates (not public search) ── human screening ──► studies
 
 ## D1 model
 
-Bibliography、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。discovery run、query、未確認candidate、source recordは公開研究modelから分離し、候補投入だけで検索結果へ混入しない構造です。
+Bibliography、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。discovery run、query、未確認candidate、source recordは公開研究modelから分離し、候補投入だけで検索結果へ混入しない構造です。Extraction run/source hash/provider call/Evidence check/consensus historyと、candidate/field/study review eventを追記可能な別tableで監査します。
 
 検索用FTS5 documentはcontrolled ingestion時にmaterializeします。query-timeに複数tableを連結して全文検索documentを再構築しません。日本語の主要専門語は明示的なaliasでcanonical English termへ変換します。
 
@@ -68,8 +85,10 @@ MCP SDK v2の`McpServer` factoryをrequestごとに作り、Cloudflare Agents SD
 
 ## AI extraction boundary
 
-Phase 1のproviderは無通信stubです。将来の実providerは明示的な管理batch commandからのみ呼び出し、公開Worker routesへ接続しません。D1には構造化field、model/prompt/schema version、confidence、provenanceを保存し、巨大なraw responseは保存しません。
+Phase 1の無通信stubに加え、実provider adapterは明示的なmanaged commandからのみ呼び出します。planとsource/configをSHA-256で固定し、exact hash approval、request/document/provider上限、全credentialsの事前確認を通します。各providerは他の出力を受け取りません。D1には構造化field、model/prompt/schema version、token count、provenance、短いsnippet、check/historyを保存し、source本文やraw responseは保存しません。
+
+Machine consensusは`machine_extracted`、`machine_checked`、`needs_human_review`までしか進めません。既存の`human_verified`と`disputed`はmachine importで上書きしません。
 
 ## Security
 
-APIはread-only、same-origin前提です。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。secretはCloudflare Secretsまたはlocal `.dev.vars`を使い、Gitへcommitしません。
+APIはread-only、same-origin Webと公式native clients向けです。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。native clientsもHTTPS GETだけを使用します。Provider secretはmanaged local processの環境変数、Worker secretはCloudflare Secretsまたはlocal `.dev.vars`を使い、Gitへcommitしません。

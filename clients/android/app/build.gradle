@@ -1,0 +1,26 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace = "jp.stey.biomedicalhydrogenevidence"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "jp.stey.biomedicalhydrogenevidence"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0.0"
+        buildConfigField "String", "API_BASE_URL", '"https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev"'
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}

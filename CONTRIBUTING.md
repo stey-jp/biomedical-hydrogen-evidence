@@ -31,6 +31,14 @@ Test dataは必ず`synthetic`、`fixture`、`test only`と明示し、実在研�
 
 検索式を変更するPull Requestでは、変更理由、protocol version、source別reported/retrieved件数、identifier completeness、deduplication rate、scope上の偽陽性・偽陰性リスクを示してください。`likely_biomedical`は自動採用ではありません。候補を公開`studies`へ昇格する際は、書誌識別子と対象scopeを人が確認し、必要なprovenanceを別途付けます。
 
+候補screeningは[human review workflow](docs/human-review.md)に従います。`include`判断だけではfieldやstudyを`human_verified`にしません。公開昇格には生成されたexact promotion hashを別stepで承認します。
+
+## Extraction and field verification
+
+実providerを使う前に[source処理権限、plan、budget、provider/model](docs/extraction-workflow.md)をreviewしてください。API key、source bundle、source本文、raw provider responseをcommitしません。provider出力は独立させ、他modelの回答をpromptへ含めません。
+
+Field reviewは原資料と短いsnippet/locatorを人が照合し、reviewerと根拠を記録します。model agreementだけを理由に`human_verified`へ変更するPull Requestは受け付けません。訂正時は既存履歴を削除せず、新しいreview/change eventを追加します。
+
 ## Code changes
 
 依存関係と抽象化は必要最小限にします。query-time AI、公開write endpoint、wildcard CORS、ORM、query builder、frontend frameworkは追加しません。新しい主要queryにはindexと`EXPLAIN QUERY PLAN`を追加してください。
@@ -40,6 +48,7 @@ npm install
 npm run check
 npm run db:migrate:local
 npm run db:seed:local
+npm run extraction:dry-run
 npm run db:plans:local
 ```
 

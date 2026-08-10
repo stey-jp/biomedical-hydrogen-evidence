@@ -4,7 +4,7 @@ Open, structured and verifiable evidence for biomedical research on molecular hy
 
 ## Overview
 
-Biomedical Hydrogen Evidenceは、分子状水素に関する生物医学研究を、構造化・検証可能・追跡可能な形で公開するためのオープンなエビデンス基盤です。Phase 1のCloudflare Workers、Static Assets、D1、ステートレスRemote MCP基盤に加え、Phase 2の再現可能な研究候補収集を管理バッチとして実装しています。
+Biomedical Hydrogen Evidenceは、分子状水素に関する生物医学研究を、構造化・検証可能・追跡可能な形で公開するためのオープンなエビデンス基盤です。Cloudflare上の公開基盤、再現可能な研究候補収集、3-provider独立Extraction、Evidence照合、human review workflow、公式iOS / Android read-only clientsを実装しています。
 
 - Official Web: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev
 - Remote MCP: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev/mcp
@@ -39,16 +39,18 @@ AI生成文章そのものはEvidenceとして扱いません。
 ## Architecture
 
 ```text
-Web / first-party REST API / public Remote MCP
-                         │
-                  shared study service
-                         │
-               prepared SQL repository
-                         │
-                    Cloudflare D1
+Web / first-party REST API / public Remote MCP / native clients
+                                │
+                         shared study service
+                                │
+                      prepared SQL repository
+                                │
+                           Cloudflare D1
+
+offline managed commands: discovery → extraction → human review
 ```
 
-静的HTML/CSS/JavaScriptはWorkers Static Assetsがasset-firstで配信します。`/api/v1/*`、`/mcp`、`/healthz`のみWorker codeを先に実行します。詳細は[docs/architecture.md](docs/architecture.md)を参照してください。
+静的HTML/CSS/JavaScriptはWorkers Static Assetsがasset-firstで配信します。`/api/v1/*`、`/mcp`、`/healthz`のみWorker codeを先に実行します。Discovery、Extraction、reviewは公開request pathから分離した明示commandです。詳細は[docs/architecture.md](docs/architecture.md)を参照してください。
 
 ## Evidence model
 
@@ -60,15 +62,15 @@ Study、authors、classification、population、複数interventions、複数outc
 
 ## AI-assisted extraction
 
-Phase 1はprovider interface、無通信stub、数値normalization、field-level consensus、verification ruleのみを実装します。外部AI API keyは不要です。将来の抽出も管理された手動batchまたは明示commandからのみ起動する設計とし、公開HTTP requestから開始しません。
+OpenAI、Anthropic、Geminiのcurrent structured-output API adapterと、hashで承認するmanaged commandを実装しています。providerは他providerの出力を見ず、source documentを独立抽出します。budgetと全credentialsをprovider call前にpreflightし、公開HTTP requestからは開始できません。入力権利、plan、費用をmaintainerが明示承認した場合だけ実providerを呼びます。詳細は[docs/extraction-workflow.md](docs/extraction-workflow.md)を参照してください。
 
 ## Multi-model comparison
 
-各providerは他providerの結果を見ずに独立抽出する前提です。Consensusは同一fieldの正規化値を比較します。多数決や全会一致は正確性の保証ではなく、原文Evidenceと人の確認が優先されます。
+Consensusは同一fieldの正規化値を比較します。各providerの短いsnippetが入力sourceへ完全一致するか、locatorがあるかも別に記録します。多数決や全会一致、snippet一致は正確性の保証ではなく、原文Evidenceと人の確認が優先されます。
 
 ## Human verification
 
-状態は`unverified`、`machine_extracted`、`machine_checked`、`needs_human_review`、`human_verified`、`disputed`です。モデル一致だけで`human_verified`にはなりません。
+状態は`unverified`、`machine_extracted`、`machine_checked`、`needs_human_review`、`human_verified`、`disputed`です。候補screeningとfield reviewをCSVで行い、reviewer、理由、artifact hash、immutable eventをD1へ残します。モデル一致だけで`human_verified`にはなりません。手順は[docs/human-review.md](docs/human-review.md)を参照してください。
 
 ## Search
 
@@ -110,7 +112,7 @@ Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthro
 
 ## Data sources
 
-公開`studies`の同梱データはPhase 1のsynthetic fixtureだけです。Phase 2ではversion管理した検索式でPubMed、Europe PMC、Crossrefから書誌候補を取得し、DOI・PMID・PMCIDを使ってdeduplicateします。候補は人が確認するまで公開検索とは別の`study_candidates`へ隔離し、source、query、取得時刻、利用条件、rights statusを記録します。詳細は[docs/discovery-protocol.md](docs/discovery-protocol.md)を参照してください。
+公開`studies`の同梱データはsynthetic fixtureだけです。Phase 2ではversion管理した検索式でPubMed、Europe PMC、Crossrefから書誌候補を取得し、DOI・PMID・PMCIDを使ってdeduplicateします。2026-08-10の管理runでは4,000 raw recordsから3,672 candidatesを構築し、本番D1の非公開candidate tableへ隔離しました。これは2,000件超の候補母集団であり、2,000件の収録済み・検証済み研究という意味ではありません。source、query、取得時刻、利用条件、rights statusを追跡します。詳細は[docs/discovery-protocol.md](docs/discovery-protocol.md)を参照してください。
 
 ## Copyright
 
@@ -140,6 +142,14 @@ $env:DISCOVERY_CONTACT_EMAIL = "maintainer@example.org"
 npm run discovery:collect -- --max-results=25
 ```
 
+Extractionはplan作成とexact hash承認を分離します。次は通信しないsynthetic dry runです。
+
+```powershell
+npm run extraction:dry-run
+```
+
+候補・field review commandと公式mobile clientのbuild方法は[human review手順](docs/human-review.md)と[mobile client手順](docs/mobile-clients.md)を参照してください。
+
 Dependenciesは次の3つだけです。
 
 - `agents`: Cloudflare公式のstateless MCP handler
@@ -154,12 +164,14 @@ Dependenciesは次の3つだけです。
 
 ```sh
 npm run check
+npm run check:worker-boundary
 npm run db:migrate:local
 npm run db:seed:local
+npm run extraction:dry-run
 npm run db:plans:local
 ```
 
-主要queryの`EXPLAIN QUERY PLAN`は`public_id`、PMID、DOI、species/design、administration route、year range、verified、condition、FTS keywordに加え、candidate key、candidate DOI、review queue、run-candidate lookupを確認します。
+主要queryの`EXPLAIN QUERY PLAN`は`public_id`、PMID、DOI、species/design、administration route、year range、verified、condition、FTS keywordに加え、candidate、extraction run/provider call/Evidence check、human review event lookupを確認します。CIはこれらに加え、zero-network extraction SQL import、Android lint/APK build、iOS simulator buildを実行します。
 
 MCPはWorker起動後、InspectorでStreamable HTTP URL `http://localhost:8787/mcp`へ接続します。
 
@@ -181,7 +193,7 @@ npx wrangler d1 migrations apply biomedical-hydrogen-evidence --remote
 npm run deploy
 ```
 
-公開`studies`には検索・詳細・MCPを検証するsynthetic fixtureだけを投入し、実在研究ではないことを全画面で明示します。Phase 2の実在書誌候補は非公開candidate tableに隔離します。別のCloudflare accountへ展開する場合だけD1を新規作成して`database_id`を更新し、Rate Limitingの`namespace_id`もaccount内で重複しない値に調整してください。
+公開`studies`には検索・詳細・MCPを検証するsynthetic fixtureだけを投入し、実在研究ではないことを全画面で明示します。実在書誌候補は非公開candidate tableに隔離します。managed extraction / review SQLは内容をreviewした後だけ別途適用します。別のCloudflare accountへ展開する場合だけD1を新規作成して`database_id`を更新し、Rate Limitingの`namespace_id`もaccount内で重複しない値に調整してください。
 
 ## Contributing
 
@@ -189,11 +201,14 @@ npm run deploy
 
 ## Roadmap
 
-- Phase 2: PubMed / Europe PMC / Crossref候補収集、identity deduplication、品質gate（実装済み）。次にhuman screeningと公開昇格を整備
-- Phase 3: OpenAI / Anthropic / Gemini等による独立した管理batch extraction
-- Phase 4: Multi-model consensusと原文Evidence照合
-- Phase 5: Human verification workflow
-- Phase 6: 必要に応じて公式iOS / Android apps
+- Phase 1: Cloudflare/D1/Web/API/MCP公開基盤（実装・本番deploy済み）
+- Phase 2: PubMed / Europe PMC / Crossrefによる2,000件超の候補母集団（実装・本番D1隔離投入済み）
+- Phase 3: OpenAI / Anthropic / Gemini独立managed Extraction（実装済み）
+- Phase 4: Multi-model consensusと原文Evidence照合（実装済み）
+- Phase 5: Human verification workflow（実装済み、実候補のreviewは継続運用）
+- Phase 6: 公式iOS / Android read-only apps（実装済み）
+
+実装と継続運用の境界は[Phase completion matrix](docs/completion-matrix.md)を参照してください。
 
 ## Disclaimer
 

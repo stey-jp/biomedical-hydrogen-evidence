@@ -4,6 +4,8 @@ node_modules/
 .dev.vars.*
 !.dev.vars.example
 coverage/
+**/.gradle/
+**/build/
 output/playwright/
 .playwright-cli/
 .generated/

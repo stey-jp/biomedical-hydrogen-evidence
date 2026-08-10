@@ -17,3 +17,9 @@ EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE candidate_key = 'doi:10
 EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE doi = '10.1000/example';
 EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE review_status = 'pending' ORDER BY publication_year DESC, id DESC LIMIT 50;
 EXPLAIN QUERY PLAN SELECT candidate_id FROM discovery_run_candidates WHERE run_id = 1;
+EXPLAIN QUERY PLAN SELECT id FROM extraction_runs WHERE public_id = 'EXT-FIXTURE-0001';
+EXPLAIN QUERY PLAN SELECT id FROM extraction_provider_calls WHERE extraction_run_id = 1 AND status = 'completed';
+EXPLAIN QUERY PLAN SELECT id FROM evidence_checks WHERE study_id = 1 AND status = 'needs_human_review';
+EXPLAIN QUERY PLAN SELECT id FROM human_review_batches WHERE public_id = 'REV-FIXTURE-0001';
+EXPLAIN QUERY PLAN SELECT id FROM candidate_review_events WHERE candidate_id = 1 ORDER BY reviewed_at DESC, id DESC;
+EXPLAIN QUERY PLAN SELECT id FROM field_verification_events WHERE study_id = 1 ORDER BY reviewed_at DESC, id DESC;

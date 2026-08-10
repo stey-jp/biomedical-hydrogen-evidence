@@ -92,3 +92,18 @@ npx wrangler d1 execute biomedical-hydrogen-evidence --local --command="PRAGMA f
 - title-based hintはabstract/full textを使わないため、偽陽性・偽陰性があります。
 - sourceごとにmetadata coverageとrights条件が異なります。
 - 小さい`--max-results`はpipeline検証用であり、母集団の網羅性を示しません。
+
+## Current production candidate run
+
+2026-08-10にprotocol v1で各query最大1,000件を取得した`DISC-20260810185337-b3db5ac4`を実行しました。
+
+- raw records: 4,000
+- deduplicated candidates: 3,672
+- DOI completeness: 95.48%
+- PMID completeness: 48.56%
+- PMCID completeness: 19.09%
+- cross-source candidates: 305
+- screening hints: `likely_biomedical` 1,064、`needs_review` 2,455、`likely_non_biomedical` 153
+- invalid records / duplicate candidate keys / future years: 0
+
+品質gateを通過し、本番D1の`study_candidates`へ隔離投入しました。公開`studies`は増やしていません。このsnapshotは2,000件超のreview対象母集団を満たしますが、網羅性、採用、医学的効果、human verificationを主張しません。

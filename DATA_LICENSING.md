@@ -32,6 +32,8 @@ Abstractは無条件に自由再配布可能とは仮定しません。sourceの
 
 AIで抽出した値には、原資料の権利、抽出providerのterms、project annotationとしての性質が重なる場合があります。provider/model/prompt/schema versionとprovenanceを記録しますが、第三者由来の構造化データ全体を一律にApache-2.0やCC BYとは宣言しません。
 
+Managed extractionへ入力するdocumentごとに、source license、rights status、外部provider処理の権限を個別確認します。`providerProcessingAuthorized: true`は、その入力をproviderへ送信する明示的な運用判断であり、source自体のlicense変更や再配布許可を表しません。source bundle、source本文、raw provider responseはD1へ保存せず、短い検証snippetだけを必要最小限に扱います。
+
 ## Rights status vocabulary
 
 `cc_by`、`cc_by_nc`、`cc0`、`public_domain`、`restricted`、`unknown`を使用します。`unknown`は自由利用の意味ではありません。状態が明確になるまで保守的に扱います。
@@ -43,3 +45,7 @@ AIで抽出した値には、原資料の権利、抽出providerのterms、proje
 ## Phase 2 discovery artifacts
 
 Discovery manifestとD1 candidate tableは書誌metadata、source attribution、検索provenance、project-created screening hintを含みます。raw API response、Abstract、全文、PDFは保存しません。screening hintはsourceの主張ではなく、review順序付けのためのproject annotationです。
+
+## Human review artifacts
+
+Candidate/field review CSVはGit対象外のlocal artifactです。review resultとしてD1へ保存するのはdecision、理由、reviewer identifier、artifact hash、短いprovenance参照です。review作業でも論文全文、PDF、長いabstract、長い引用をIssueやPull Requestへ複製しません。

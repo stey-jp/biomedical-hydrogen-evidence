@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Project-created synthetic source text for offline extraction tests only.",
+  "documents": [
+    {
+      "publicId": "BHE-FIXTURE-0001",
+      "sourceDocument": "fixtures/extraction-source-bundle.synthetic.json",
+      "sourceType": "full_text",
+      "section": "methods",
+      "sourceLicense": "Project-created synthetic fixture",
+      "rightsStatus": "cc0",
+      "providerProcessingAuthorized": true,
+      "content": "Synthetic fixture — not a real biomedical study. Methods: We assigned 72 fictional adult participants at random to receive either 2% molecular hydrogen inhalation or synthetic room air for 60 minutes once daily over 8 weeks. The study was described as double-blinded. Results: the fictional primary cognitive score showed no clear difference. No serious adverse events occurred in this synthetic example."
+    }
+  ]
+}

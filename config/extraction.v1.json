@@ -1,0 +1,65 @@
+{
+  "extractionSchemaVersion": "1.0.0",
+  "promptVersion": "biomedical-hydrogen-extraction-v1",
+  "description": "Independent, evidence-linked extraction from maintainer-supplied source text. No provider sees another provider's output.",
+  "budget": {
+    "maxDocuments": 25,
+    "maxProviders": 3,
+    "maxRequests": 75,
+    "maxInputCharactersPerDocument": 50000,
+    "maxOutputTokensPerRequest": 6000
+  },
+  "providers": {
+    "openai": {
+      "endpoint": "https://api.openai.com/v1/responses",
+      "model": "gpt-5.6-luna",
+      "apiKeyEnvironmentVariable": "OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-sonnet-5",
+      "apiKeyEnvironmentVariable": "ANTHROPIC_API_KEY"
+    },
+    "gemini": {
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions",
+      "model": "gemini-3.6-flash",
+      "apiKeyEnvironmentVariable": "GEMINI_API_KEY"
+    }
+  },
+  "targetFields": [
+    "classification.species_type",
+    "classification.study_design",
+    "classification.randomized",
+    "classification.blinded",
+    "classification.prospective",
+    "classification.peer_reviewed",
+    "population.participant_count",
+    "population.analyzed_participant_count",
+    "population.age_description",
+    "population.sex_description",
+    "population.disease_or_condition",
+    "population.inclusion_criteria",
+    "population.exclusion_criteria",
+    "interventions.administration_route",
+    "interventions.hydrogen_concentration",
+    "interventions.flow_rate",
+    "interventions.dissolved_hydrogen_concentration",
+    "interventions.dose",
+    "interventions.duration_per_session",
+    "interventions.frequency",
+    "interventions.total_intervention_period",
+    "interventions.preparation_method",
+    "interventions.device_information",
+    "interventions.comparator",
+    "outcomes",
+    "safety.adverse_events",
+    "safety.serious_adverse_events",
+    "safety.withdrawals",
+    "safety.safety_conclusion",
+    "transparency.funding",
+    "transparency.conflict_of_interest",
+    "transparency.trial_registration",
+    "transparency.registration_number",
+    "transparency.ethics_approval"
+  ]
+}

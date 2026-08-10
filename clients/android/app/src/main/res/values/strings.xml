@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Biomedical Hydrogen Evidence</string>
+    <string name="heading">分子状水素の研究を検索</string>
+    <string name="search_hint">キーワード（例: 水素吸入）</string>
+    <string name="search">検索</string>
+    <string name="notice">研究報告が存在することと、医学的効果が確立していることは異なります。診断・治療の助言ではありません。</string>
+    <string name="loading">読み込み中…</string>
+    <string name="no_results">該当する研究はありません。</string>
+    <string name="error_prefix">取得できませんでした: %1$s</string>
+    <string name="close">閉じる</string>
+</resources>
