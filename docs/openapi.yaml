@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: Biomedical Hydrogen Evidence first-party API
+  version: 0.1.0
+  description: Read-only API used by the official Web and future official clients. It is not advertised as a public developer platform.
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      summary: Check Worker and D1 health
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { const: ok }
+                  database: { const: reachable }
+                  queryTimeAi: { const: false }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/search:
+    get:
+      summary: Search stored biomedical molecular-hydrogen evidence
+      parameters:
+        - $ref: '#/components/parameters/Query'
+        - $ref: '#/components/parameters/SpeciesType'
+        - $ref: '#/components/parameters/StudyDesign'
+        - $ref: '#/components/parameters/AdministrationRoute'
+        - $ref: '#/components/parameters/Condition'
+        - $ref: '#/components/parameters/YearFrom'
+        - $ref: '#/components/parameters/YearTo'
+        - $ref: '#/components/parameters/HumanVerifiedOnly'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200': { $ref: '#/components/responses/SearchResults' }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/studies:
+    get:
+      summary: List stored studies using the same filters and cursor pagination as search
+      parameters:
+        - $ref: '#/components/parameters/Query'
+        - $ref: '#/components/parameters/SpeciesType'
+        - $ref: '#/components/parameters/StudyDesign'
+        - $ref: '#/components/parameters/AdministrationRoute'
+        - $ref: '#/components/parameters/Condition'
+        - $ref: '#/components/parameters/YearFrom'
+        - $ref: '#/components/parameters/YearTo'
+        - $ref: '#/components/parameters/HumanVerifiedOnly'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200': { $ref: '#/components/responses/SearchResults' }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/studies/{publicId}:
+    get:
+      summary: Get one study using its stable public ID
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      responses:
+        '200':
+          description: Study detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/StudyDetail' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/studies/{publicId}/evidence:
+    get:
+      summary: Get field-level provenance for one study
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      responses:
+        '200':
+          description: Provenance records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [publicId, evidence]
+                    properties:
+                      publicId: { type: string }
+                      evidence:
+                        type: array
+                        items: { $ref: '#/components/schemas/Evidence' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/meta/filters:
+    get:
+      summary: Get filter values currently present in D1
+      responses:
+        '200':
+          description: Filter metadata
+          content:
+            application/json:
+              schema: { type: object }
+        '429': { $ref: '#/components/responses/RateLimited' }
+components:
+  parameters:
+    Query:
+      name: query
+      in: query
+      schema: { type: string, maxLength: 200 }
+    SpeciesType:
+      name: speciesType
+      in: query
+      schema: { type: string, enum: [human, animal, in_vitro, review, other] }
+    StudyDesign:
+      name: studyDesign
+      in: query
+      schema: { type: string, maxLength: 80 }
+    AdministrationRoute:
+      name: administrationRoute
+      in: query
+      schema: { type: string, enum: [inhalation, hydrogen_rich_water, bath, saline, injection, topical, dialysis, other] }
+    Condition:
+      name: condition
+      in: query
+      schema: { type: string, maxLength: 120 }
+    YearFrom:
+      name: yearFrom
+      in: query
+      schema: { type: integer, minimum: 1800, maximum: 2200 }
+    YearTo:
+      name: yearTo
+      in: query
+      schema: { type: integer, minimum: 1800, maximum: 2200 }
+    HumanVerifiedOnly:
+      name: humanVerifiedOnly
+      in: query
+      schema: { type: boolean, default: false }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    PublicId:
+      name: publicId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$', maxLength: 80 }
+  responses:
+    SearchResults:
+      description: Cursor-paginated results
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, pagination, query]
+            properties:
+              data:
+                type: array
+                items: { $ref: '#/components/schemas/StudySummary' }
+              pagination:
+                type: object
+                properties:
+                  limit: { type: integer }
+                  nextCursor: { type: [string, 'null'] }
+              query:
+                type: object
+                properties:
+                  original: { type: string }
+                  normalized: { type: string }
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    StudySummary:
+      type: object
+      required: [publicId, title, publicationYear, speciesType, studyDesign, administrationRoutes, verificationStatus]
+      properties:
+        publicId: { type: string }
+        title: { type: string }
+        publicationYear: { type: integer }
+        speciesType: { type: string }
+        studyDesign: { type: string }
+        participantCount: { type: [integer, 'null'] }
+        administrationRoutes: { type: array, items: { type: string } }
+        verificationStatus: { type: string }
+        recordKind: { type: string, enum: [published, fixture] }
+        fixtureNotice: { type: [string, 'null'] }
+    StudyDetail:
+      type: object
+      required: [publicId, bibliography, classification, population, interventions, outcomes, verification]
+      properties:
+        publicId: { type: string }
+        bibliography: { type: object }
+        classification: { type: object }
+        population: { type: object }
+        interventions: { type: array, items: { type: object } }
+        normalizedNumericValues: { type: array, items: { type: object } }
+        outcomes: { type: array, items: { type: object } }
+        safety: { type: [object, 'null'] }
+        researchTransparency: { type: [object, 'null'] }
+        verification: { type: object }
+        recordKind: { type: string, enum: [published, fixture] }
+        fixtureNotice: { type: [string, 'null'] }
+    Evidence:
+      type: object
+      required: [fieldName, sourceDocument, sourceType, section, rightsStatus, verification]
+      properties:
+        fieldName: { type: string }
+        sourceDocument: { type: string }
+        sourceType: { type: string }
+        section: { type: string }
+        pageNumber: { type: [string, 'null'] }
+        locator: { type: [string, 'null'] }
+        evidenceSnippet: { type: [string, 'null'] }
+        sourceLicense: { type: [string, 'null'] }
+        rightsStatus: { type: string }
+        verification: { type: object }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object }
+

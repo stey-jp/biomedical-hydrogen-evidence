@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="分子状水素（H₂）の生物医学研究を、構造化された根拠と検証状態から検索します。">
+  <title>Biomedical Hydrogen Evidence</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">Biomedical Hydrogen Evidence</a>
+    <span class="phase-label">Phase 1</span>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">Open · Structured · Verifiable</p>
+      <h1 id="page-title">分子状水素の生物医学研究を検索</h1>
+      <p class="lede">研究報告と、その構造化データ・原文根拠・検証状態を追跡できるオープンなエビデンス基盤です。</p>
+
+      <form id="search-form" class="search-panel" role="search">
+        <label class="search-label" for="query">キーワード</label>
+        <div class="search-row">
+          <input id="query" name="query" type="search" maxlength="200" placeholder="例：水素吸入と認知症" autocomplete="off">
+          <button type="submit">検索</button>
+        </div>
+        <div class="examples" aria-label="検索例">
+          <button type="button" class="example" data-query="水素吸入と認知症">水素吸入と認知症</button>
+          <button type="button" class="example" data-query="水素水のヒトRCT">水素水のヒトRCT</button>
+          <button type="button" class="example" data-query="パーキンソン病と水素">パーキンソン病と水素</button>
+          <button type="button" class="example" data-query="睡眠と水素研究">睡眠と水素研究</button>
+        </div>
+
+        <details class="filters">
+          <summary>条件を絞り込む</summary>
+          <div class="filter-grid">
+            <label>研究対象
+              <select id="species-type" name="speciesType"><option value="">すべて</option></select>
+            </label>
+            <label>研究デザイン
+              <select id="study-design" name="studyDesign"><option value="">すべて</option></select>
+            </label>
+            <label>投与経路
+              <select id="administration-route" name="administrationRoute"><option value="">すべて</option></select>
+            </label>
+            <label>疾患・状態
+              <select id="condition" name="condition"><option value="">すべて</option></select>
+            </label>
+            <label>開始年
+              <input id="year-from" name="yearFrom" type="number" min="1800" max="2200" inputmode="numeric">
+            </label>
+            <label>終了年
+              <input id="year-to" name="yearTo" type="number" min="1800" max="2200" inputmode="numeric">
+            </label>
+          </div>
+          <label class="checkbox-label">
+            <input id="verified-only" name="humanVerifiedOnly" type="checkbox">
+            人が確認済みの研究のみ
+          </label>
+        </details>
+      </form>
+    </section>
+
+    <aside class="notice" aria-label="重要な注意">
+      <strong>注意：</strong>研究報告が存在することは、医学的効果が確立していることを意味しません。本サイトは特定の商品・治療を推奨せず、医療助言を提供しません。
+    </aside>
+
+    <section class="results-section" aria-labelledby="results-title">
+      <div class="results-heading">
+        <h2 id="results-title">検索結果</h2>
+        <p id="result-status" role="status" aria-live="polite">読み込み中…</p>
+      </div>
+      <div id="results" class="result-list"></div>
+      <button id="load-more" class="secondary-button" type="button" hidden>さらに表示</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>Biomedical Hydrogen Evidence · Code licensed under Apache-2.0</p>
+    <p><a href="https://github.com/stey-jp/biomedical-hydrogen-evidence">GitHubでデータ・ルール・変更履歴を確認</a></p>
+  </footer>
+  <script type="module" src="/js/search.js"></script>
+</body>
+</html>
