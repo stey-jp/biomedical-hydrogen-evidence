@@ -10,6 +10,7 @@
     "db:migrate:local": "wrangler d1 migrations apply biomedical-hydrogen-evidence --local",
     "db:seed:local": "wrangler d1 execute biomedical-hydrogen-evidence --local --file=fixtures/synthetic.sql",
     "db:plans:local": "wrangler d1 execute biomedical-hydrogen-evidence --local --file=scripts/query-plans.sql",
+    "discovery:collect": "node scripts/discovery/collect.mjs",
     "test": "node --test",
     "lint": "node scripts/check-syntax.mjs",
     "check": "npm run lint && npm test"

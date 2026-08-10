@@ -6,5 +6,6 @@ node_modules/
 coverage/
 output/playwright/
 .playwright-cli/
+.generated/
 *.log
 .DS_Store

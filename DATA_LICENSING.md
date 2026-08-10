@@ -14,6 +14,8 @@ Projectが独自に作成した分類、検証メモ、provenance locator等に�
 
 Title、authors、DOI、PMID、journal等のmetadataはsourceごとのterms、database rights、適用法が異なり得ます。全metadataを無条件にApache-2.0またはCC BYとして宣言しません。sourceとrights statusを記録します。
 
+Phase 2のPubMed、Europe PMC、Crossref候補はsource record URLとsource-specificなrights noteを保持します。Crossref recordにCreative Commons URLが明示される場合は対応するrights statusへ正規化しますが、metadata全体や論文本文へ同じlicenseが及ぶとは推定しません。PubMed/Europe PMCの出所だけを根拠に自由再配布可能とは判定しません。
+
 ## Abstracts
 
 Abstractは無条件に自由再配布可能とは仮定しません。sourceのlicenseが明確でないabstract全文は保存・再配布せず、必要な場合も検証目的の短いsnippetとlocatorを優先します。
@@ -38,3 +40,6 @@ AIで抽出した値には、原資料の権利、抽出providerのterms、proje
 
 `fixtures/synthetic.sql`はproject-created synthetic test dataです。実在論文から抽出したものではなく、医療上の主張を表しません。
 
+## Phase 2 discovery artifacts
+
+Discovery manifestとD1 candidate tableは書誌metadata、source attribution、検索provenance、project-created screening hintを含みます。raw API response、Abstract、全文、PDFは保存しません。screening hintはsourceの主張ではなく、review順序付けのためのproject annotationです。

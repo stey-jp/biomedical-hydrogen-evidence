@@ -13,4 +13,7 @@ EXPLAIN QUERY PLAN SELECT s.id
   WHERE study_search MATCH '"molecular_hydrogen"'
   ORDER BY s.publication_year DESC, s.id DESC
   LIMIT 11;
-
+EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE candidate_key = 'doi:10.1000/example';
+EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE doi = '10.1000/example';
+EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE review_status = 'pending' ORDER BY publication_year DESC, id DESC LIMIT 50;
+EXPLAIN QUERY PLAN SELECT candidate_id FROM discovery_run_candidates WHERE run_id = 1;

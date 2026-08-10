@@ -16,6 +16,21 @@ Cloudflare Worker
 
 Web、REST、MCPは`searchStudies()`、`getStudy()`、`getEvidence()`を共有し、MCPからRESTへ自己HTTP接続しません。
 
+Phase 2の候補収集は公開request pathから分離します。
+
+```text
+versioned discovery protocol
+        │ explicit local command
+        ▼
+PubMed / Europe PMC / Crossref
+        │ normalize + identity deduplicate + quality gate
+        ▼
+generated review manifest + D1 import SQL
+        │ explicit reviewed import
+        ▼
+study_candidates (not public search) ── human screening ──► studies
+```
+
 ## Request flow
 
 1. Static filesはWorker application codeを通さず配信する。
@@ -27,7 +42,7 @@ Web、REST、MCPは`searchStudies()`、`getStudy()`、`getEvidence()`を共有�
 
 ## D1 model
 
-Bibliography、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。
+Bibliography、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。discovery run、query、未確認candidate、source recordは公開研究modelから分離し、候補投入だけで検索結果へ混入しない構造です。
 
 検索用FTS5 documentはcontrolled ingestion時にmaterializeします。query-timeに複数tableを連結して全文検索documentを再構築しません。日本語の主要専門語は明示的なaliasでcanonical English termへ変換します。
 
@@ -58,4 +73,3 @@ Phase 1のproviderは無通信stubです。将来の実providerは明示的な�
 ## Security
 
 APIはread-only、same-origin前提です。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。secretはCloudflare Secretsまたはlocal `.dev.vars`を使い、Gitへcommitしません。
-

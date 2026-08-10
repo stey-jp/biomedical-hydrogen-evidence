@@ -27,6 +27,10 @@ Biomedical Hydrogen Evidenceへの貢献は、透明性、監査可能性、再�
 
 Test dataは必ず`synthetic`、`fixture`、`test only`と明示し、実在研究らしい偽DOI・PMID・PMCIDを作らないでください。
 
+## Discovery candidates
+
+検索式を変更するPull Requestでは、変更理由、protocol version、source別reported/retrieved件数、identifier completeness、deduplication rate、scope上の偽陽性・偽陰性リスクを示してください。`likely_biomedical`は自動採用ではありません。候補を公開`studies`へ昇格する際は、書誌識別子と対象scopeを人が確認し、必要なprovenanceを別途付けます。
+
 ## Code changes
 
 依存関係と抽象化は必要最小限にします。query-time AI、公開write endpoint、wildcard CORS、ORM、query builder、frontend frameworkは追加しません。新しい主要queryにはindexと`EXPLAIN QUERY PLAN`を追加してください。

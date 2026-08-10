@@ -4,7 +4,7 @@ Open, structured and verifiable evidence for biomedical research on molecular hy
 
 ## Overview
 
-Biomedical Hydrogen Evidenceは、分子状水素に関する生物医学研究を、構造化・検証可能・追跡可能な形で公開するためのオープンなエビデンス基盤です。Phase 1では、Cloudflare Workers、Static Assets、D1、ステートレスRemote MCPを使った軽量な基盤を提供します。
+Biomedical Hydrogen Evidenceは、分子状水素に関する生物医学研究を、構造化・検証可能・追跡可能な形で公開するためのオープンなエビデンス基盤です。Phase 1のCloudflare Workers、Static Assets、D1、ステートレスRemote MCP基盤に加え、Phase 2の再現可能な研究候補収集を管理バッチとして実装しています。
 
 - Official Web: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev
 - Remote MCP: https://biomedical-hydrogen-evidence.flat-voice-876d.workers.dev/mcp
@@ -110,7 +110,7 @@ Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthro
 
 ## Data sources
 
-Phase 1はsynthetic fixtureのみです。Phase 2でPubMed、Europe PMC、Crossref等から対象母集団を再現可能な方法で構築します。各sourceの利用条件とrights statusを記録します。
+公開`studies`の同梱データはPhase 1のsynthetic fixtureだけです。Phase 2ではversion管理した検索式でPubMed、Europe PMC、Crossrefから書誌候補を取得し、DOI・PMID・PMCIDを使ってdeduplicateします。候補は人が確認するまで公開検索とは別の`study_candidates`へ隔離し、source、query、取得時刻、利用条件、rights statusを記録します。詳細は[docs/discovery-protocol.md](docs/discovery-protocol.md)を参照してください。
 
 ## Copyright
 
@@ -133,6 +133,13 @@ npm run dev
 
 `http://localhost:8787/`を開きます。local seedを再投入する場合は、重複を避けるためWranglerのlocal D1 stateを作り直してからmigrationとseedを順に実行してください。
 
+研究候補を少量取得してlocal D1で確認する場合は、運用連絡先を環境変数で渡します。これは公開HTTP routeからは実行されません。
+
+```powershell
+$env:DISCOVERY_CONTACT_EMAIL = "maintainer@example.org"
+npm run discovery:collect -- --max-results=25
+```
+
 Dependenciesは次の3つだけです。
 
 - `agents`: Cloudflare公式のstateless MCP handler
@@ -152,7 +159,7 @@ npm run db:seed:local
 npm run db:plans:local
 ```
 
-主要queryの`EXPLAIN QUERY PLAN`は`public_id`、PMID、DOI、species/design、administration route、year range、verified、condition、FTS keywordを確認します。
+主要queryの`EXPLAIN QUERY PLAN`は`public_id`、PMID、DOI、species/design、administration route、year range、verified、condition、FTS keywordに加え、candidate key、candidate DOI、review queue、run-candidate lookupを確認します。
 
 MCPはWorker起動後、InspectorでStreamable HTTP URL `http://localhost:8787/mcp`へ接続します。
 
@@ -174,7 +181,7 @@ npx wrangler d1 migrations apply biomedical-hydrogen-evidence --remote
 npm run deploy
 ```
 
-Phase 1の公式deploymentには検索・詳細・MCPを検証するsynthetic fixtureだけを投入し、実在研究ではないことを全画面で明示します。別のCloudflare accountへ展開する場合だけD1を新規作成して`database_id`を更新し、Rate Limitingの`namespace_id`もaccount内で重複しない値に調整してください。
+公開`studies`には検索・詳細・MCPを検証するsynthetic fixtureだけを投入し、実在研究ではないことを全画面で明示します。Phase 2の実在書誌候補は非公開candidate tableに隔離します。別のCloudflare accountへ展開する場合だけD1を新規作成して`database_id`を更新し、Rate Limitingの`namespace_id`もaccount内で重複しない値に調整してください。
 
 ## Contributing
 
@@ -182,7 +189,7 @@ Phase 1の公式deploymentには検索・詳細・MCPを検証するsynthetic fi
 
 ## Roadmap
 
-- Phase 2: PubMed / Europe PMC / Crossref等から再現可能な研究母集団を構築
+- Phase 2: PubMed / Europe PMC / Crossref候補収集、identity deduplication、品質gate（実装済み）。次にhuman screeningと公開昇格を整備
 - Phase 3: OpenAI / Anthropic / Gemini等による独立した管理batch extraction
 - Phase 4: Multi-model consensusと原文Evidence照合
 - Phase 5: Human verification workflow
