@@ -28,6 +28,7 @@ npm run deploy
 - `要旨対訳`はEurope PMCから要旨を都度取得し、文単位で原文と日本語参考訳を並べます。要旨本文・要旨訳はD1へ保存せず、そのブラウザタブのmemoryだけで再利用します。利用条件にかかわらず原資料へのlinkを残します。
 - 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。DeepL訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
 - `☆ ブックマーク`はcandidateをreviewer identifierごとにD1へ保存します。`保存論文`から後日一覧表示、原資料表示、レビュー画面への再表示、解除、CSV書き出しができます。reviewerはtrim後の完全一致で分離され、同じidentifierを入力した認証済み管理者には同じ一覧が表示されます。
+- 判定を1件以上保存したreviewer identifierは、次回以降の入力候補リストに最終判定日の新しい順で表示されます。候補にない新しいidentifierも直接入力できます。
 
 各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。
 

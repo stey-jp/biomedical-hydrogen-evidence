@@ -83,6 +83,26 @@ test("review repository queue and progress statements stay bound and indexable",
   assert.deepEqual(progress.bindings, ["needs_review"]);
 });
 
+test("review repository lists reviewers by latest completed review", async () => {
+  const prepared = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...bindings) {
+          prepared.push({ sql, bindings });
+          return { async all() { return { results: [] }; } };
+        },
+      };
+    },
+  };
+  await createReviewRepository(db).getReviewers();
+  assert.equal(prepared.length, 1);
+  assert.match(prepared[0].sql, /FROM candidate_review_events/u);
+  assert.match(prepared[0].sql, /GROUP BY reviewer/u);
+  assert.match(prepared[0].sql, /ORDER BY last_reviewed_at DESC/u);
+  assert.deepEqual(prepared[0].bindings, [200]);
+});
+
 test("review repository records the audit batch, immutable event, and candidate status together", async () => {
   const prepared = [];
   let batched;
@@ -167,6 +187,9 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
     async getProgress() {
       return [{ review_status: "pending", count: 1 }];
     },
+    async getReviewers() {
+      return [{ reviewer: "reviewer-1", review_count: 3, last_reviewed_at: "2026-08-11T03:00:00.000Z" }];
+    },
     async getCandidate(key) {
       return key === candidate.candidate_key ? candidate : null;
     },
@@ -186,6 +209,17 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
   assert.equal(queueResponse.headers.get("cache-control"), "no-store");
   assert.equal(queueBody.data[0].candidateKey, candidate.candidate_key);
   assert.deepEqual(queueBody.data[0].authors, ["A. Author"]);
+
+  const reviewersResponse = await handleReview(request("/api/review/v1/reviewers", {
+    headers: { cookie },
+  }), { REVIEW_ADMIN_TOKEN: secret }, { repository, now: () => now });
+  const reviewersBody = await reviewersResponse.json();
+  assert.equal(reviewersResponse.status, 200);
+  assert.deepEqual(reviewersBody.data, [{
+    reviewer: "reviewer-1",
+    reviewCount: 3,
+    lastReviewedAt: "2026-08-11T03:00:00.000Z",
+  }]);
 
   const decisionResponse = await handleReview(request("/api/review/v1/decisions", {
     method: "POST",

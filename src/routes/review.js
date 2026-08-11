@@ -145,6 +145,14 @@ function progressView(rows) {
   return { ...counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
 }
 
+function reviewerView(row) {
+  return {
+    reviewer: row.reviewer,
+    reviewCount: Number(row.review_count),
+    lastReviewedAt: row.last_reviewed_at,
+  };
+}
+
 async function sha256(value) {
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -365,6 +373,9 @@ export async function handleReview(request, env, options = {}) {
       data: progressView(await repository.getProgress(hint)),
       screeningHint: hint,
     });
+  }
+  if (url.pathname === "/api/review/v1/reviewers" && request.method === "GET") {
+    return securedJson(request, { data: (await repository.getReviewers()).map(reviewerView) });
   }
   if (url.pathname === "/api/review/v1/export" && request.method === "GET") {
     const hint = screeningHint(url.searchParams.get("screeningHint"));

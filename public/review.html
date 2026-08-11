@@ -44,7 +44,8 @@
           </select>
         </label>
         <label>Reviewer identifier
-          <input id="reviewer" maxlength="200" autocomplete="name" placeholder="例：daiki">
+          <input id="reviewer" list="reviewer-options" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="入力または履歴から選択">
+          <datalist id="reviewer-options"></datalist>
         </label>
         <div class="setup-actions">
           <button id="show-bookmarks" type="button" class="text-button">保存論文 0</button>

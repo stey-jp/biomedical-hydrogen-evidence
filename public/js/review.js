@@ -8,11 +8,12 @@ const state = {
   abstracts: new Map(),
   bookmarks: new Map(),
   bookmarkReviewer: "",
+  reviewers: [],
 };
 
 const elements = Object.fromEntries([
   "save-status", "login-panel", "login-form", "admin-token", "login-error",
-  "review-app", "screening-hint", "reviewer", "logout", "export-csv", "show-bookmarks", "progress-text",
+  "review-app", "screening-hint", "reviewer", "reviewer-options", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
@@ -94,6 +95,35 @@ function currentCandidate() {
 
 function reviewerValue() {
   return elements.reviewer.value.trim();
+}
+
+function renderReviewerOptions() {
+  const options = state.reviewers.map((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.reviewer;
+    option.label = `${entry.reviewCount}件 · 最終 ${entry.lastReviewedAt?.slice(0, 10) ?? "不明"}`;
+    return option;
+  });
+  elements["reviewer-options"].replaceChildren(...options);
+}
+
+async function loadReviewers() {
+  const result = await api("/api/review/v1/reviewers");
+  state.reviewers = result.data;
+  renderReviewerOptions();
+}
+
+function rememberReviewer(reviewer, reviewedAt) {
+  const existing = state.reviewers.find((entry) => entry.reviewer === reviewer);
+  state.reviewers = [
+    {
+      reviewer,
+      reviewCount: (existing?.reviewCount ?? 0) + 1,
+      lastReviewedAt: reviewedAt,
+    },
+    ...state.reviewers.filter((entry) => entry.reviewer !== reviewer),
+  ].slice(0, 200);
+  renderReviewerOptions();
 }
 
 function isBookmarked(candidateKey) {
@@ -430,7 +460,7 @@ async function openAbstract(candidate) {
 async function loadReview() {
   showApp();
   elements["save-status"].textContent = "読込中…";
-  await Promise.all([loadProgress(), loadQueue({ reset: true }), loadBookmarks()]);
+  await Promise.all([loadProgress(), loadQueue({ reset: true }), loadBookmarks(), loadReviewers()]);
 }
 
 function adjustProgress(previousStatus, decision) {
@@ -460,6 +490,7 @@ async function saveDecision(decision, reason, duplicateOf) {
     state.queue.shift();
     elements["revise-last"].hidden = false;
     adjustProgress(result.previousStatus, decision);
+    rememberReviewer(reviewer, result.reviewedAt);
     elements["save-status"].textContent = "保存済み";
     showToast("判定を保存しました");
     renderCandidate();

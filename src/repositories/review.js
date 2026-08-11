@@ -93,6 +93,18 @@ export function createReviewRepository(db) {
       return result.results ?? [];
     },
 
+    async getReviewers(limit = 200) {
+      const result = await db.prepare(`SELECT
+          reviewer,
+          COUNT(*) AS review_count,
+          MAX(reviewed_at) AS last_reviewed_at
+        FROM candidate_review_events
+        GROUP BY reviewer
+        ORDER BY last_reviewed_at DESC, reviewer
+        LIMIT ?`).bind(limit).all();
+      return result.results ?? [];
+    },
+
     async getCompletedReviews(screeningHint) {
       const result = await db.prepare(`SELECT
           candidate_key, review_status AS decision, review_reason AS reason,
