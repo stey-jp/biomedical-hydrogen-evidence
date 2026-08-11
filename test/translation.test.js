@@ -205,7 +205,18 @@ test("abstract translation is sentence-aligned and never written to the translat
   let titleCacheWrites = 0;
   const repository = {
     async getCandidate() {
-      return { candidate_key: "pmid:123", pmid: "123" };
+      return {
+        candidate_key: "pmid:123",
+        pmid: "123",
+        journal: "Test Journal",
+        publisher: "Test Publisher",
+        journal_metric_type: "openalex_2yr_mean_citedness",
+        journal_metric_value: 3.75,
+        journal_metric_year: 2025,
+        journal_metric_source: "openalex",
+        journal_metric_source_url: "https://openalex.org/S123",
+        journal_metric_refreshed_at: "2026-08-11T00:00:00Z",
+      };
     },
     async getTranslationSetting() { return "glossary-existing"; },
     async saveTitleTranslations() { titleCacheWrites += 1; },
@@ -229,6 +240,15 @@ test("abstract translation is sentence-aligned and never written to the translat
     { source: "First sentence.", translation: "訳1" },
     { source: "Second sentence?", translation: "訳2" },
   ]);
+  assert.equal(result.journal, "Test Journal");
+  assert.deepEqual(result.journalMetric, {
+    type: "openalex_2yr_mean_citedness",
+    value: 3.75,
+    year: 2025,
+    source: "openalex",
+    sourceUrl: "https://openalex.org/S123",
+    refreshedAt: "2026-08-11T00:00:00Z",
+  });
   assert.equal(titleCacheWrites, 0);
   assert.equal(splitEnglishSentences("One. Two! Three? ").length, 3);
 });

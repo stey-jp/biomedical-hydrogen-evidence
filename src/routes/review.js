@@ -112,6 +112,7 @@ function parseJsonArray(value) {
 }
 
 function candidateView(row) {
+  const journalMetricValue = row.journal_metric_value == null ? null : Number(row.journal_metric_value);
   return {
     candidateKey: row.candidate_key,
     title: row.title,
@@ -121,6 +122,14 @@ function candidateView(row) {
     publicationYear: row.publication_year,
     publicationDate: row.publication_date,
     journal: row.journal,
+    journalMetric: Number.isFinite(journalMetricValue) ? {
+      type: row.journal_metric_type,
+      value: journalMetricValue,
+      year: Number(row.journal_metric_year),
+      source: row.journal_metric_source,
+      sourceUrl: row.journal_metric_source_url,
+      refreshedAt: row.journal_metric_refreshed_at,
+    } : null,
     publisher: row.publisher,
     authors: parseJsonArray(row.authors_json),
     language: row.language,
@@ -168,6 +177,12 @@ function snapshot(row) {
     publicationYear: row.publication_year,
     publicationDate: row.publication_date,
     journal: row.journal,
+    journalMetric: row.journal_metric_value == null ? null : {
+      type: row.journal_metric_type,
+      value: Number(row.journal_metric_value),
+      year: Number(row.journal_metric_year),
+      source: row.journal_metric_source,
+    },
     publisher: row.publisher,
     authors: parseJsonArray(row.authors_json),
     language: row.language,

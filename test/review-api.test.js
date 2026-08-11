@@ -28,6 +28,12 @@ const candidate = {
   publication_year: 2025,
   publication_date: "2025-01-02",
   journal: "Test Journal",
+  journal_metric_type: "openalex_2yr_mean_citedness",
+  journal_metric_value: 3.75,
+  journal_metric_year: 2025,
+  journal_metric_source: "openalex",
+  journal_metric_source_url: "https://openalex.org/S123",
+  journal_metric_refreshed_at: "2026-08-11T00:00:00Z",
   publisher: "Test Publisher",
   authors_json: "[\"A. Author\"]",
   language: "en",
@@ -74,8 +80,9 @@ test("review session uses a signed, expiring HttpOnly cookie without retaining t
 
 test("review repository queue and progress statements stay bound and indexable", () => {
   const queue = buildReviewQueueStatement({ screeningHint: "likely_biomedical", limit: 20 });
-  assert.match(queue.sql, /screening_hint = \? AND review_status = 'pending'/u);
-  assert.match(queue.sql, /ORDER BY id/u);
+  assert.match(queue.sql, /c\.screening_hint = \? AND c\.review_status = 'pending'/u);
+  assert.match(queue.sql, /LEFT JOIN journal_metrics/u);
+  assert.match(queue.sql, /ORDER BY c\.id/u);
   assert.deepEqual(queue.bindings, ["likely_biomedical", 20]);
 
   const progress = buildReviewProgressStatement("needs_review");
@@ -209,6 +216,14 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
   assert.equal(queueResponse.headers.get("cache-control"), "no-store");
   assert.equal(queueBody.data[0].candidateKey, candidate.candidate_key);
   assert.deepEqual(queueBody.data[0].authors, ["A. Author"]);
+  assert.deepEqual(queueBody.data[0].journalMetric, {
+    type: "openalex_2yr_mean_citedness",
+    value: 3.75,
+    year: 2025,
+    source: "openalex",
+    sourceUrl: "https://openalex.org/S123",
+    refreshedAt: "2026-08-11T00:00:00Z",
+  });
 
   const reviewersResponse = await handleReview(request("/api/review/v1/reviewers", {
     headers: { cookie },

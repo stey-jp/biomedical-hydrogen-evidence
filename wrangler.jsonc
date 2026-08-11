@@ -9,6 +9,9 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*", "/mcp", "/healthz", "/review", "/review/"]
   },
+  "triggers": {
+    "crons": ["0 18 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

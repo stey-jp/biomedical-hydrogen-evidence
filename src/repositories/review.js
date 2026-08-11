@@ -1,24 +1,43 @@
 const queueColumns = `
-  id AS internal_id,
-  candidate_key,
-  title,
-  title_normalized,
-  doi,
-  pmid,
-  pmcid,
-  publication_year,
-  publication_date,
-  journal,
-  publisher,
-  authors_json,
-  language,
-  source_url,
-  screening_hint,
-  screening_reasons_json,
-  review_status,
-  review_reason,
-  reviewed_by,
-  reviewed_at`;
+  c.id AS internal_id,
+  c.candidate_key,
+  c.title,
+  c.title_normalized,
+  c.doi,
+  c.pmid,
+  c.pmcid,
+  c.publication_year,
+  c.publication_date,
+  c.journal,
+  c.publisher,
+  c.authors_json,
+  c.language,
+  c.source_url,
+  c.screening_hint,
+  c.screening_reasons_json,
+  c.review_status,
+  c.review_reason,
+  c.reviewed_by,
+  c.reviewed_at,
+  jm.metric_type AS journal_metric_type,
+  jm.metric_value AS journal_metric_value,
+  jm.metric_year AS journal_metric_year,
+  jm.source AS journal_metric_source,
+  jm.source_url AS journal_metric_source_url,
+  jm.refreshed_at AS journal_metric_refreshed_at`;
+
+const journalMetricJoin = `LEFT JOIN journal_metrics jm
+  ON jm.lookup_title_key = LOWER(TRIM(c.journal))
+  AND jm.metric_type = 'openalex_2yr_mean_citedness'
+  AND jm.match_status = 'matched'
+  AND jm.metric_year = (
+    SELECT MAX(latest_jm.metric_year)
+    FROM journal_metrics latest_jm
+    WHERE latest_jm.lookup_title_key = LOWER(TRIM(c.journal))
+      AND latest_jm.metric_type = 'openalex_2yr_mean_citedness'
+      AND latest_jm.match_status = 'matched'
+      AND latest_jm.metric_value IS NOT NULL
+  )`;
 
 const bookmarkedCandidateColumns = `
   c.id AS internal_id,
@@ -41,6 +60,12 @@ const bookmarkedCandidateColumns = `
   c.review_reason,
   c.reviewed_by,
   c.reviewed_at,
+  jm.metric_type AS journal_metric_type,
+  jm.metric_value AS journal_metric_value,
+  jm.metric_year AS journal_metric_year,
+  jm.source AS journal_metric_source,
+  jm.source_url AS journal_metric_source_url,
+  jm.refreshed_at AS journal_metric_refreshed_at,
   b.created_at AS bookmarked_at`;
 
 export const reviewHints = ["likely_biomedical", "needs_review", "likely_non_biomedical"];
@@ -48,9 +73,10 @@ export const reviewHints = ["likely_biomedical", "needs_review", "likely_non_bio
 export function buildReviewQueueStatement({ screeningHint, limit }) {
   return {
     sql: `SELECT ${queueColumns}
-      FROM study_candidates
-      WHERE screening_hint = ? AND review_status = 'pending'
-      ORDER BY id
+      FROM study_candidates c
+      ${journalMetricJoin}
+      WHERE c.screening_hint = ? AND c.review_status = 'pending'
+      ORDER BY c.id
       LIMIT ?`,
     bindings: [screeningHint, limit],
   };
@@ -118,14 +144,16 @@ export function createReviewRepository(db) {
 
     async getCandidate(candidateKey) {
       return db.prepare(`SELECT ${queueColumns}
-        FROM study_candidates
-        WHERE candidate_key = ?`).bind(candidateKey).first();
+        FROM study_candidates c
+        ${journalMetricJoin}
+        WHERE c.candidate_key = ?`).bind(candidateKey).first();
     },
 
     async getBookmarks(reviewer, limit = 500) {
       const result = await db.prepare(`SELECT ${bookmarkedCandidateColumns}
         FROM candidate_review_bookmarks b
         JOIN study_candidates c ON c.id = b.candidate_id
+        ${journalMetricJoin}
         WHERE b.reviewer = ?
         ORDER BY b.created_at DESC, b.candidate_id DESC
         LIMIT ?`).bind(reviewer, limit).all();
@@ -226,15 +254,16 @@ export function createReviewRepository(db) {
 
     async getDuplicateSuggestions(candidateKey) {
       const result = await db.prepare(`SELECT ${queueColumns}
-        FROM study_candidates
-        WHERE title_normalized = (
+        FROM study_candidates c
+        ${journalMetricJoin}
+        WHERE c.title_normalized = (
           SELECT title_normalized FROM study_candidates WHERE candidate_key = ?
         )
-          AND candidate_key <> ?
-          AND review_status <> 'duplicate'
-        ORDER BY CASE WHEN publication_year = (
+          AND c.candidate_key <> ?
+          AND c.review_status <> 'duplicate'
+        ORDER BY CASE WHEN c.publication_year = (
           SELECT publication_year FROM study_candidates WHERE candidate_key = ?
-        ) THEN 0 ELSE 1 END, id
+        ) THEN 0 ELSE 1 END, c.id
         LIMIT 10`).bind(candidateKey, candidateKey, candidateKey).all();
       return result.results ?? [];
     },
@@ -242,11 +271,12 @@ export function createReviewRepository(db) {
     async findDuplicateTarget(identifier, excludeCandidateKey) {
       const values = duplicateIdentifiers(identifier);
       return db.prepare(`SELECT ${queueColumns}
-        FROM study_candidates
-        WHERE candidate_key <> ?
-          AND review_status <> 'duplicate'
-          AND (candidate_key = ? OR doi = ? OR pmid = ? OR pmcid = ?)
-        ORDER BY id
+        FROM study_candidates c
+        ${journalMetricJoin}
+        WHERE c.candidate_key <> ?
+          AND c.review_status <> 'duplicate'
+          AND (c.candidate_key = ? OR c.doi = ? OR c.pmid = ? OR c.pmcid = ?)
+        ORDER BY c.id
         LIMIT 1`).bind(
         excludeCandidateKey,
         values.candidateKey,
@@ -254,6 +284,56 @@ export function createReviewRepository(db) {
         values.pmid,
         values.pmcid,
       ).first();
+    },
+
+    async getJournalMetricRefreshQueue({ metricYear, staleBefore, limit }) {
+      const result = await db.prepare(`SELECT
+          MIN(TRIM(c.journal)) AS journal,
+          LOWER(TRIM(c.journal)) AS lookup_title_key
+        FROM study_candidates c
+        LEFT JOIN journal_metrics jm
+          ON jm.lookup_title_key = LOWER(TRIM(c.journal))
+          AND jm.metric_type = 'openalex_2yr_mean_citedness'
+          AND jm.metric_year = ?
+        WHERE c.journal IS NOT NULL
+          AND TRIM(c.journal) <> ''
+          AND (jm.refreshed_at IS NULL OR jm.refreshed_at < ?)
+        GROUP BY LOWER(TRIM(c.journal))
+        ORDER BY COALESCE(jm.refreshed_at, ''), lookup_title_key
+        LIMIT ?`).bind(metricYear, staleBefore, limit).all();
+      return result.results ?? [];
+    },
+
+    async saveJournalMetrics(records) {
+      if (!records.length) return [];
+      return db.batch(records.map((record) => db.prepare(`INSERT INTO journal_metrics (
+          lookup_title_key, lookup_title, matched_journal_title, metric_type, metric_value,
+          metric_year, source, source_journal_id, source_url, source_updated_at, match_status, refreshed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(lookup_title_key, metric_type, metric_year) DO UPDATE SET
+          lookup_title = excluded.lookup_title,
+          matched_journal_title = excluded.matched_journal_title,
+          metric_value = excluded.metric_value,
+          source = excluded.source,
+          source_journal_id = excluded.source_journal_id,
+          source_url = excluded.source_url,
+          source_updated_at = excluded.source_updated_at,
+          match_status = excluded.match_status,
+          refreshed_at = excluded.refreshed_at`)
+        .bind(
+          record.lookupTitleKey,
+          record.lookupTitle,
+          record.matchedJournalTitle,
+          record.metricType,
+          record.metricValue,
+          record.metricYear,
+          record.source,
+          record.sourceJournalId,
+          record.sourceUrl,
+          record.sourceUpdatedAt,
+          record.matchStatus,
+          record.refreshedAt,
+        )));
     },
 
     async recordDecision({

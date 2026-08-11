@@ -247,7 +247,10 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 }
 .abstract-content { display: grid; gap: 12px; }
 .abstract-status { margin: 0; padding: 14px; border-radius: 10px; background: #f0f2f1; color: var(--muted); }
-.abstract-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.75rem; }
+.abstract-meta { display: grid; grid-template-columns: max-content 1fr; gap: 5px 10px; margin: 0; padding: 11px 12px; border-radius: 10px; background: #f0f2f1; color: var(--muted); font-size: 0.75rem; }
+.abstract-meta dt { font-weight: 800; }
+.abstract-meta dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.abstract-meta-link { color: var(--accent); font-weight: 750; }
 .abstract-pair { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
 .abstract-side { min-width: 0; }
 .abstract-side p { margin: 3px 0 0; font-weight: 720; }

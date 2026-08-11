@@ -1,6 +1,9 @@
 import { handleApi } from "./routes/api.js";
 import { handleMcp } from "./routes/mcp.js";
 import { handleReview } from "./routes/review.js";
+import { createOpenAlexClient } from "./journal-metrics/openalex.js";
+import { createReviewRepository } from "./repositories/review.js";
+import { refreshJournalMetrics } from "./services/journal-metrics.js";
 import { createStudyService } from "./services/studies.js";
 import {
   createRateLimiter,
@@ -75,6 +78,17 @@ export async function handleRequest(request, env, ctx = {}) {
   return errorResponse(request, 404, "not_found", "Route not found.");
 }
 
+export async function handleScheduled(env, options = {}) {
+  const result = await refreshJournalMetrics({
+    repository: options.repository ?? createReviewRepository(env.DB),
+    client: options.client ?? createOpenAlexClient({ apiKey: env.OPENALEX_API_KEY }),
+    now: options.now ?? Date.now,
+    waitImpl: options.waitImpl,
+  });
+  console.log("Journal metric refresh", JSON.stringify(result));
+  return result;
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -83,5 +97,8 @@ export default {
       console.error("Unhandled request error", error instanceof Error ? error.message : "unknown");
       return errorResponse(request, 500, "internal_error", "An unexpected error occurred.");
     }
+  },
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(handleScheduled(env));
   },
 };

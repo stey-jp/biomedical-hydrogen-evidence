@@ -140,6 +140,16 @@ export function createReviewTranslationService({
           source: abstract.source,
           sourceUrl: abstract.sourceUrl,
           rightsStatus: abstract.rightsStatus,
+          journal: candidate.journal,
+          publisher: candidate.publisher,
+          journalMetric: candidate.journal_metric_value == null ? null : {
+            type: candidate.journal_metric_type,
+            value: Number(candidate.journal_metric_value),
+            year: Number(candidate.journal_metric_year),
+            source: candidate.journal_metric_source,
+            sourceUrl: candidate.journal_metric_source_url,
+            refreshedAt: candidate.journal_metric_refreshed_at,
+          },
           provider: "DeepL API Free",
           sentences: sentences.map((source, index) => ({ source, translation: translations[index].text })),
         };

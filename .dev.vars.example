@@ -1,2 +1,3 @@
 REVIEW_ADMIN_TOKEN=replace-with-at-least-32-random-characters
 DEEPL_API_KEY=replace-with-your-deepl-api-free-key
+OPENALEX_API_KEY=replace-with-your-free-openalex-api-key

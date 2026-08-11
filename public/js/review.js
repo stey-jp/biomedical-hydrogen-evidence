@@ -147,6 +147,15 @@ function currentCandidate() {
   return state.queue[0];
 }
 
+const journalMetricNumber = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 3 });
+
+function journalMetricLabel(candidate, missing = "IF相当 未収録") {
+  const metric = candidate?.journalMetric;
+  if (!Number.isFinite(metric?.value)) return missing;
+  const year = Number.isInteger(metric.year) ? `・${metric.year}年引用` : "";
+  return `IF相当 ${journalMetricNumber.format(metric.value)}（OpenAlex 2年平均被引用数${year}）`;
+}
+
 function reviewerValue() {
   return elements.reviewer.value.trim();
 }
@@ -242,7 +251,11 @@ function renderCandidate() {
   heading.lang = candidate.language ?? "en";
   fragment.append(heading);
   fragment.append(titleTranslation(candidate));
-  const metadata = [candidate.publicationYear, candidate.journal].filter(Boolean).join(" · ");
+  const metadata = [
+    candidate.publicationYear,
+    candidate.journal,
+    candidate.journal ? journalMetricLabel(candidate) : null,
+  ].filter(Boolean).join(" · ");
   fragment.append(text("p", metadata || "書誌metadata未収録", "metadata"));
   if (candidate.authors.length) fragment.append(text("p", candidate.authors.join(" · "), "authors"));
   fragment.append(text("p", candidate.candidateKey, "candidate-key"));
@@ -377,7 +390,13 @@ function bookmarkItem(candidate) {
   item.append(text("strong", candidate.title));
   item.append(text(
     "span",
-    [candidate.publicationYear, candidate.journal, candidate.reviewStatus, candidate.candidateKey].filter(Boolean).join(" · "),
+    [
+      candidate.publicationYear,
+      candidate.journal,
+      candidate.journal ? journalMetricLabel(candidate) : null,
+      candidate.reviewStatus,
+      candidate.candidateKey,
+    ].filter(Boolean).join(" · "),
     "bookmark-item-meta",
   ));
   const actions = document.createElement("div");
@@ -461,11 +480,27 @@ async function toggleBookmark(candidate, bookmarked) {
 
 function renderAbstract(abstract) {
   const fragment = document.createDocumentFragment();
-  const meta = document.createElement("div");
+  const meta = document.createElement("dl");
   meta.className = "abstract-meta";
-  meta.append(text("span", abstract.source));
+  meta.append(text("dt", "原資料掲載元"));
+  const source = text("dd", abstract.source || "未収録");
   const sourceUrl = safeUrl(abstract.sourceUrl);
-  if (sourceUrl) meta.append(sourceLink("原資料を開く", sourceUrl));
+  if (sourceUrl) {
+    const link = sourceLink("原資料を開く", sourceUrl);
+    link.className = "abstract-meta-link";
+    source.append(" ", link);
+  }
+  meta.append(source);
+  meta.append(text("dt", "掲載誌"), text("dd", abstract.journal || "未収録"));
+  meta.append(text("dt", "IF相当"));
+  const metric = text("dd", journalMetricLabel(abstract, "未収録").replace(/^IF相当\s*/u, ""));
+  const metricUrl = safeUrl(abstract.journalMetric?.sourceUrl);
+  if (metricUrl) {
+    const link = sourceLink("指標出典", metricUrl);
+    link.className = "abstract-meta-link";
+    metric.append(" ", link);
+  }
+  meta.append(metric);
   fragment.append(meta);
   abstract.sentences.forEach((sentence, index) => {
     const pair = document.createElement("section");

@@ -8,13 +8,14 @@ Phase 5は候補screeningとfield verificationを別々に扱います。AIの�
 
 ### スマートフォンUI（PC常時起動不要）
 
-本番Workerの`/review`は、非公開candidate tableを直接screeningするモバイル優先の管理画面です。一般公開APIとは分離され、`REVIEW_ADMIN_TOKEN`でログインした同一originのブラウザだけが読み書きできます。トークンそのものはブラウザへ保存せず、ログイン後は30日で失効する署名済み`HttpOnly` / `SameSite=Strict` Cookieを使います。
+本番Workerの`/review`は、非公開candidate tableを直接screeningするモバイル優先の管理画面です。一般公開APIとは分離され、`REVIEW_ADMIN_TOKEN`でログインした同一originのブラウザだけが読み書きできます。本番HTTP requestはHTTPSへredirectし、トークンそのものはブラウザへ保存せず、ログイン後は30日で失効する署名済み`Secure` / `HttpOnly` / `SameSite=Strict` Cookieを使います。reviewer identifierはD1の非公開監査履歴と認証済みCSVだけに保持し、一般公開APIへ返しません。
 
-初回だけ32文字以上のランダムな管理トークンとDeepL API Freeの認証キーをCloudflare Secretへ登録し、Workerをdeployします。キーはGit、`.dev.vars.example`、ブラウザへ保存しません。
+初回だけ32文字以上のランダムな管理トークン、DeepL API Freeの認証キー、無料のOpenAlex APIキーをCloudflare Secretへ登録し、Workerをdeployします。キーはGit、`.dev.vars.example`、ブラウザへ保存しません。
 
 ```powershell
 npx wrangler secret put REVIEW_ADMIN_TOKEN
 npx wrangler secret put DEEPL_API_KEY
+npx wrangler secret put OPENALEX_API_KEY
 npm run deploy
 ```
 
@@ -26,13 +27,14 @@ npm run deploy
 - `CSV書き出し`は選択中キューの判定済み行を、既存importに必要な`candidate_key`、`decision`、`reason`、`reviewer`を含むCSVとして保存します。
 - タイトルは英語原文の直下にDeepLの日本語参考訳を表示します。EN→JA用語集を初回に自動作成し、原文SHA-256、provider model、用語集version、翻訳時刻とともにD1へcacheします。タイトル変更時はhash不一致で再翻訳します。
 - `要旨対訳`はEurope PMCから要旨を都度取得し、文単位で原文と日本語参考訳を並べます。要旨本文・要旨訳はD1へ保存せず、そのブラウザタブのmemoryだけで再利用します。利用条件にかかわらず原資料へのlinkを残します。
+- 掲載誌の`IF相当`はOpenAlex `2yr_mean_citedness`を表示します。これはClarivateの公式Journal Impact Factorではありません。掲載誌名の完全一致だけを採用し、値がない場合は未収録と表示します。Cron Triggerは毎日03:00 JSTに未収録または30日以上古い誌名を最大20件更新し、年・取得時刻・OpenAlex sourceをD1へ保持します。
 - 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。DeepL訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
 - `☆ ブックマーク`はcandidateをreviewer identifierごとにD1へ保存します。`保存論文`から後日一覧表示、原資料表示、レビュー画面への再表示、解除、CSV書き出しができます。reviewerはtrim後の完全一致で分離され、同じidentifierを入力した認証済み管理者には同じ一覧が表示されます。
 - 判定を1件以上保存したreviewer identifierは、次回以降の入力候補リストに最終判定日の新しい順で表示されます。候補にない新しいidentifierも直接入力できます。
 
 各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。
 
-local確認では`.dev.vars.example`を`.dev.vars`へコピーし、実際のランダムトークンとDeepL API Freeキーへ置き換えてから`npm run dev`を実行します。`.dev.vars`はGit管理外です。
+local確認では`.dev.vars.example`を`.dev.vars`へコピーし、実際のランダムトークン、DeepL API Freeキー、OpenAlex APIキーへ置き換えてから`npm run dev`を実行します。`.dev.vars`はGit管理外です。
 
 ### CSV workflow
 
