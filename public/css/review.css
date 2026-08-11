@@ -143,6 +143,49 @@ progress { width: 100%; height: 9px; accent-color: var(--accent); }
   box-shadow: var(--shadow);
 }
 
+.candidate-card[data-sort-decision="include"] {
+  --sort-exit-x: 28%;
+  --sort-exit-y: 0;
+  --sort-enter-x: -7%;
+  --sort-angle: 2deg;
+}
+.candidate-card[data-sort-decision="exclude"] {
+  --sort-exit-x: -28%;
+  --sort-exit-y: 0;
+  --sort-enter-x: 7%;
+  --sort-angle: -2deg;
+}
+.candidate-card[data-sort-decision="duplicate"] {
+  --sort-exit-x: -24%;
+  --sort-exit-y: 8%;
+  --sort-enter-x: 7%;
+  --sort-angle: -2deg;
+}
+.candidate-card[data-sort-decision="needs_review"] {
+  --sort-exit-x: 24%;
+  --sort-exit-y: 8%;
+  --sort-enter-x: -7%;
+  --sort-angle: 2deg;
+}
+.candidate-card.is-sorting-out {
+  pointer-events: none;
+  animation: candidate-sort-out 260ms cubic-bezier(0.55, 0, 0.9, 0.45) both;
+}
+.candidate-card.is-sorting-in {
+  pointer-events: none;
+  animation: candidate-sort-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes candidate-sort-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); }
+  to { opacity: 0; transform: translate3d(var(--sort-exit-x), var(--sort-exit-y), 0) rotate(var(--sort-angle)) scale(0.97); }
+}
+
+@keyframes candidate-sort-in {
+  from { opacity: 0; transform: translate3d(var(--sort-enter-x), 0, 0) scale(0.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
 .candidate-card h2 { margin: 3px 0 10px; font-size: clamp(1.2rem, 5vw, 1.65rem); line-height: 1.25; }
 .candidate-number { margin: 0; color: var(--accent); font-size: 0.78rem; font-weight: 800; }
 .translation-label { margin: 12px 0 0; color: var(--muted); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -276,6 +319,8 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 .bookmark-item-actions .bookmark-remove { grid-column: 1 / -1; }
 
 .toast {
+  --toast-background: rgb(32 43 37 / 88%);
+
   position: fixed;
   z-index: 20;
   top: max(88px, calc(env(safe-area-inset-top) + 76px));
@@ -287,7 +332,7 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
   border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 10px;
   backdrop-filter: blur(8px);
-  background: rgb(32 43 37 / 88%);
+  background: var(--toast-background);
   box-shadow: 0 8px 24px rgb(23 35 29 / 14%);
   color: #fff;
   opacity: 0;
@@ -300,6 +345,10 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
     transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
     visibility 0s linear 220ms;
 }
+.toast[data-tone="include"] { --toast-background: rgb(23 107 77 / 92%); }
+.toast[data-tone="exclude"] { --toast-background: rgb(163 57 52 / 92%); }
+.toast[data-tone="duplicate"] { --toast-background: rgb(83 100 91 / 92%); }
+.toast[data-tone="needs-review"] { --toast-background: rgb(139 93 0 / 92%); }
 .toast.is-visible {
   opacity: 1;
   transform: translateY(0);
@@ -317,4 +366,6 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
   *,
   *::before,
   *::after { scroll-behavior: auto !important; }
+  .candidate-card.is-sorting-out,
+  .candidate-card.is-sorting-in { animation: none; }
 }

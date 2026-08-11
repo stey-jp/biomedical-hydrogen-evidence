@@ -9,6 +9,7 @@ const state = {
   bookmarks: new Map(),
   bookmarkReviewer: "",
   reviewers: [],
+  transitioning: false,
 };
 
 const elements = Object.fromEntries([
@@ -38,6 +39,13 @@ const reviewStatusLabels = {
   needs_review: "保留済み",
 };
 
+const decisionToastFeedback = {
+  include: { message: "「採用」として保存しました", tone: "include" },
+  exclude: { message: "「対象外」として保存しました", tone: "exclude" },
+  duplicate: { message: "「重複」として保存しました", tone: "duplicate" },
+  needs_review: { message: "「保留」として保存しました", tone: "needs-review" },
+};
+
 const abstractErrorMessages = {
   translation_disabled: "翻訳APIの設定後に要旨対訳を表示します。",
   pubmed_abstract_missing: "PubMedには要旨が収録されていません。原資料を確認してください。",
@@ -63,10 +71,11 @@ async function api(path, options = {}) {
 
 let toastVisibilityTimer;
 
-function showToast(message) {
+function showToast(message, tone = "default") {
   window.clearTimeout(toastVisibilityTimer);
   const wasHidden = elements.toast.hidden;
   elements.toast.textContent = message;
+  elements.toast.dataset.tone = tone;
   elements.toast.hidden = false;
   if (wasHidden) {
     elements.toast.getBoundingClientRect();
@@ -226,6 +235,25 @@ function disableDecisions(disabled) {
   document.querySelectorAll(".decision").forEach((button) => { button.disabled = disabled; });
 }
 
+function updateCandidateControls(candidate) {
+  elements.skip.disabled = state.transitioning || !candidate || state.queue.length < 2;
+  disableDecisions(state.transitioning || !candidate);
+  elements["needs-review"].textContent = candidate?.reviewStatus === "needs_review" ? "保留済み" : "保留";
+  if (candidate?.reviewStatus === "needs_review") elements["needs-review"].disabled = true;
+}
+
+async function animateCandidate(phase, decision) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const className = `is-sorting-${phase}`;
+  elements.candidate.dataset.sortDecision = decision;
+  elements.candidate.classList.remove("is-sorting-in", "is-sorting-out");
+  elements.candidate.getBoundingClientRect();
+  elements.candidate.classList.add(className);
+  await Promise.allSettled(elements.candidate.getAnimations().map((animation) => animation.finished));
+  elements.candidate.classList.remove(className);
+  if (phase === "in") delete elements.candidate.dataset.sortDecision;
+}
+
 function titleTranslation(candidate) {
   const container = document.createElement("section");
   container.className = "title-translation";
@@ -258,9 +286,7 @@ function renderCandidate() {
     const message = state.loading ? "候補を読み込んでいます…" : `このキューの${emptyLabel}候補はありません。`;
     elements.candidate.replaceChildren(text("p", message));
     elements["queue-status"].textContent = state.loading ? "読込中" : "完了";
-    elements.skip.disabled = true;
-    elements["needs-review"].textContent = "保留";
-    disableDecisions(true);
+    updateCandidateControls(null);
     return;
   }
 
@@ -317,11 +343,7 @@ function renderCandidate() {
   elements.candidate.replaceChildren(fragment);
 
   elements["queue-status"].textContent = `端末に${state.queue.length}件読込済み`;
-  elements.skip.disabled = state.queue.length < 2;
-  disableDecisions(false);
-  const alreadyHeld = candidate.reviewStatus === "needs_review";
-  elements["needs-review"].textContent = alreadyHeld ? "保留済み" : "保留";
-  elements["needs-review"].disabled = alreadyHeld;
+  updateCandidateControls(candidate);
 }
 
 function renderProgress() {
@@ -601,24 +623,34 @@ async function saveDecision(decision, reason, duplicateOf) {
   }
   const candidate = currentCandidate();
   if (!candidate) return;
-  disableDecisions(true);
+  state.transitioning = true;
+  updateCandidateControls(candidate);
   try {
     const result = await api("/api/review/v1/decisions", {
       method: "POST",
       body: JSON.stringify({ candidateKey: candidate.candidateKey, decision, reason, reviewer, duplicateOf }),
     });
     state.lastSaved = { candidate: { ...candidate, reviewStatus: decision }, decision };
-    state.queue.shift();
     elements["revise-last"].hidden = false;
     adjustProgress(result.previousStatus, decision);
     rememberReviewer(reviewer, result.reviewedAt);
-    showToast("判定を保存しました");
-    renderCandidate();
+    const feedback = decisionToastFeedback[decision];
+    showToast(feedback?.message ?? "判定を保存しました", feedback?.tone);
+    await animateCandidate("out", decision);
+    state.queue.shift();
+    if (state.queue.length) renderCandidate();
+    else await loadQueue();
     window.scrollTo({ top: 0, behavior: "auto" });
+    if (currentCandidate()) await animateCandidate("in", decision);
+    state.transitioning = false;
+    updateCandidateControls(currentCandidate());
     if (state.queue.length <= 5) await loadQueue();
   } catch (error) {
+    elements.candidate.classList.remove("is-sorting-in", "is-sorting-out");
+    delete elements.candidate.dataset.sortDecision;
+    state.transitioning = false;
     showToast(error.message);
-    disableDecisions(false);
+    updateCandidateControls(currentCandidate());
   }
 }
 
