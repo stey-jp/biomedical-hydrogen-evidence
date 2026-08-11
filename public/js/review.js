@@ -16,7 +16,7 @@ const elements = Object.fromEntries([
   "review-app", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
-  "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
+  "exclude-dialog", "exclude-form", "duplicate-dialog", "duplicate-form", "duplicate-results",
   "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog", "close-reason",
   "reason-form", "reason-text", "toast",
   "abstract-dialog", "abstract-content", "close-abstract",
@@ -67,7 +67,7 @@ function showToast(message) {
 function showLogin(message = "") {
   elements["review-app"].hidden = true;
   elements["options-button"].hidden = true;
-  if (elements["options-dialog"].open) elements["options-dialog"].close();
+  if (elements["options-dialog"].open) closeDialog(elements["options-dialog"]);
   elements["login-panel"].hidden = false;
   elements["login-error"].textContent = message;
   elements["login-error"].hidden = !message;
@@ -101,12 +101,39 @@ function materialIcon(name) {
   return icon;
 }
 
+const dialogCloseStates = new WeakMap();
+
 function openDialog(dialog) {
+  dialog.returnValue = "";
+  dialog.classList.remove("is-closing", "is-visible");
   dialog.showModal();
   const focusTarget = dialog.querySelector(".dialog-card");
-  if (!focusTarget) return;
-  focusTarget.tabIndex = -1;
-  focusTarget.focus({ preventScroll: true });
+  if (focusTarget) {
+    focusTarget.tabIndex = -1;
+    focusTarget.focus({ preventScroll: true });
+  }
+  window.requestAnimationFrame(() => {
+    if (dialog.open && !dialogCloseStates.has(dialog)) dialog.classList.add("is-visible");
+  });
+}
+
+function closeDialog(dialog, returnValue = "cancel") {
+  if (!dialog.open) return Promise.resolve();
+  const activeClose = dialogCloseStates.get(dialog);
+  if (activeClose) return activeClose;
+  dialog.classList.remove("is-visible");
+  dialog.classList.add("is-closing");
+  const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240;
+  const pendingClose = new Promise((resolve) => {
+    window.setTimeout(() => {
+      dialogCloseStates.delete(dialog);
+      if (dialog.open) dialog.close(returnValue);
+      dialog.classList.remove("is-closing");
+      resolve();
+    }, delay);
+  });
+  dialogCloseStates.set(dialog, pendingClose);
+  return pendingClose;
 }
 
 function sourceLink(label, url) {
@@ -337,11 +364,11 @@ function bookmarkSourceUrl(candidate) {
   return null;
 }
 
-function showBookmarkedCandidate(candidate) {
+async function showBookmarkedCandidate(candidate) {
   const existing = state.queue.find((item) => item.candidateKey === candidate.candidateKey);
   const viewed = existing ?? { ...candidate, translationStatus: "loading" };
   state.queue = [viewed, ...state.queue.filter((item) => item.candidateKey !== candidate.candidateKey)];
-  elements["bookmark-dialog"].close();
+  await closeDialog(elements["bookmark-dialog"]);
   renderCandidate();
   if (!viewed.translatedTitle) loadTitleTranslations([viewed]);
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -588,7 +615,7 @@ elements["login-form"].addEventListener("submit", async (event) => {
 });
 
 elements["options-button"].addEventListener("click", () => openDialog(elements["options-dialog"]));
-elements["close-options"].addEventListener("click", () => elements["options-dialog"].close());
+elements["close-options"].addEventListener("click", () => closeDialog(elements["options-dialog"]));
 elements.logout.addEventListener("click", async () => {
   await api("/api/review/v1/session", { method: "DELETE" }).catch(() => {});
   showLogin();
@@ -597,16 +624,16 @@ elements["export-csv"].addEventListener("click", () => {
   const hint = encodeURIComponent(elements["screening-hint"].value);
   location.assign(`/api/review/v1/export?screeningHint=${hint}`);
 });
-elements["close-abstract"].addEventListener("click", () => elements["abstract-dialog"].close());
-elements["close-bookmarks"].addEventListener("click", () => elements["bookmark-dialog"].close());
-elements["close-reason"].addEventListener("click", () => elements["reason-dialog"].close());
+elements["close-abstract"].addEventListener("click", () => closeDialog(elements["abstract-dialog"]));
+elements["close-bookmarks"].addEventListener("click", () => closeDialog(elements["bookmark-dialog"]));
+elements["close-reason"].addEventListener("click", () => closeDialog(elements["reason-dialog"]));
 elements["show-bookmarks"].addEventListener("click", async () => {
   if (!reviewerValue()) {
     showToast("先にReviewer identifierを入力してください");
     elements.reviewer.focus();
     return;
   }
-  elements["options-dialog"].close();
+  await closeDialog(elements["options-dialog"]);
   openDialog(elements["bookmark-dialog"]);
   elements["bookmark-results"].replaceChildren(text("p", "保存論文を読み込んでいます…", "abstract-status"));
   try {
@@ -670,6 +697,25 @@ elements.duplicate.addEventListener("click", () => {
   loadDuplicates();
 });
 
+document.querySelectorAll("dialog").forEach((dialog) => {
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeDialog(dialog);
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    const insideDialog = event.clientX >= bounds.left && event.clientX <= bounds.right
+      && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+    if (!insideDialog) closeDialog(dialog);
+  });
+});
+
+elements["exclude-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeDialog(elements["exclude-dialog"], event.submitter?.value ?? "cancel");
+});
+
 elements["exclude-dialog"].addEventListener("close", () => {
   const selected = elements["exclude-dialog"].returnValue;
   if (excludeReasons[selected]) saveDecision("exclude", excludeReasons[selected]);
@@ -679,11 +725,11 @@ elements["exclude-dialog"].addEventListener("close", () => {
   }
 });
 
-elements["reason-form"].addEventListener("submit", (event) => {
+elements["reason-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   const reason = elements["reason-text"].value.trim();
   if (!reason) return;
-  elements["reason-dialog"].close();
+  await closeDialog(elements["reason-dialog"], "save");
   saveDecision("exclude", reason);
 });
 
@@ -697,12 +743,15 @@ elements["duplicate-query"].addEventListener("keydown", (event) => {
     elements["search-duplicate"].click();
   }
 });
-elements["duplicate-form"].addEventListener("submit", (event) => {
-  if (event.submitter?.value !== "confirm") return;
+elements["duplicate-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (event.submitter?.value !== "confirm") {
+    closeDialog(elements["duplicate-dialog"]);
+    return;
+  }
   if (!state.duplicateTarget) return;
   const target = state.duplicateTarget;
-  elements["duplicate-dialog"].close();
+  await closeDialog(elements["duplicate-dialog"], "confirm");
   saveDecision("duplicate", "タイトルと書誌識別子を比較して同一報告と確認。", target.candidateKey);
 });
 
