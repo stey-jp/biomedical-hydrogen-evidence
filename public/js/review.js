@@ -243,7 +243,6 @@ function updateCandidateControls(candidate) {
 }
 
 async function animateCandidate(phase, decision) {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const className = `is-sorting-${phase}`;
   elements.candidate.dataset.sortDecision = decision;
   elements.candidate.classList.remove("is-sorting-in", "is-sorting-out");

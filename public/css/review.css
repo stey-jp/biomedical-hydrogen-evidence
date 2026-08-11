@@ -319,7 +319,7 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 .bookmark-item-actions .bookmark-remove { grid-column: 1 / -1; }
 
 .toast {
-  --toast-background: rgb(32 43 37 / 88%);
+  --toast-background: rgb(24 35 29 / 76%);
 
   position: fixed;
   z-index: 20;
@@ -331,7 +331,7 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
   padding: 12px 14px;
   border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 10px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px) saturate(1.1);
   background: var(--toast-background);
   box-shadow: 0 8px 24px rgb(23 35 29 / 14%);
   color: #fff;
@@ -345,10 +345,10 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
     transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
     visibility 0s linear 220ms;
 }
-.toast[data-tone="include"] { --toast-background: rgb(23 107 77 / 92%); }
-.toast[data-tone="exclude"] { --toast-background: rgb(163 57 52 / 92%); }
-.toast[data-tone="duplicate"] { --toast-background: rgb(83 100 91 / 92%); }
-.toast[data-tone="needs-review"] { --toast-background: rgb(139 93 0 / 92%); }
+.toast[data-tone="include"] { --toast-background: rgb(7 74 48 / 74%); }
+.toast[data-tone="exclude"] { --toast-background: rgb(125 25 22 / 74%); }
+.toast[data-tone="duplicate"] { --toast-background: rgb(45 59 52 / 72%); }
+.toast[data-tone="needs-review"] { --toast-background: rgb(104 65 0 / 74%); }
 .toast.is-visible {
   opacity: 1;
   transform: translateY(0);
@@ -366,6 +366,4 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
   *,
   *::before,
   *::after { scroll-behavior: auto !important; }
-  .candidate-card.is-sorting-out,
-  .candidate-card.is-sorting-in { animation: none; }
 }
