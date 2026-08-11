@@ -13,7 +13,7 @@ const state = {
 
 const elements = Object.fromEntries([
   "options-button", "options-dialog", "close-options", "login-panel", "login-form", "admin-token", "login-error",
-  "review-app", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "progress-text",
+  "review-app", "review-status", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "exclude-form", "duplicate-dialog", "duplicate-form", "duplicate-results",
@@ -28,6 +28,23 @@ const excludeReasons = {
   non_biomedical: "植物・農業・食品保存など、生物医学研究の対象外。",
   industrial: "産業用水素・燃料電池・水素製造等で対象外。",
   not_report: "研究結果を報告する文献ではない。",
+};
+
+const reviewStatusLabels = {
+  pending: "未判定",
+  include: "採用済み",
+  exclude: "対象外",
+  duplicate: "重複",
+  needs_review: "保留済み",
+};
+
+const abstractErrorMessages = {
+  translation_disabled: "翻訳APIの設定後に要旨対訳を表示します。",
+  pubmed_abstract_missing: "PubMedには要旨が収録されていません。原資料を確認してください。",
+  abstract_missing: "利用可能な要旨が収録されていません。原資料を確認してください。",
+  abstract_unavailable: "利用可能な要旨が収録されていません。原資料を確認してください。",
+  abstract_fetch_failed: "要旨の取得に失敗しました。時間をおいて再試行してください。",
+  translation_provider_failed: "要旨は取得できましたが、翻訳に失敗しました。時間をおいて再試行してください。",
 };
 
 async function api(path, options = {}) {
@@ -94,12 +111,6 @@ function text(tag, value, className) {
   return node;
 }
 
-function materialIcon(name) {
-  const icon = text("span", name, "material-symbols-rounded");
-  icon.setAttribute("aria-hidden", "true");
-  return icon;
-}
-
 const dialogCloseStates = new WeakMap();
 
 function openDialog(dialog) {
@@ -149,11 +160,18 @@ function currentCandidate() {
 
 const journalMetricNumber = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 3 });
 
-function journalMetricLabel(candidate, missing = "IF相当 未収録") {
+function journalMetricLabel(candidate, missing = "引用指標 未収録") {
   const metric = candidate?.journalMetric;
   if (!Number.isFinite(metric?.value)) return missing;
-  const year = Number.isInteger(metric.year) ? `・${metric.year}年引用` : "";
-  return `IF相当 ${journalMetricNumber.format(metric.value)}（OpenAlex 2年平均被引用数${year}）`;
+  const year = Number.isInteger(metric.year) ? `・${metric.year}` : "";
+  return `引用指標 ${journalMetricNumber.format(metric.value)}（OpenAlex${year}）`;
+}
+
+function journalMetricDescription(candidate) {
+  const metric = candidate?.journalMetric;
+  if (!Number.isFinite(metric?.value)) return "";
+  const year = Number.isInteger(metric.year) ? `（${metric.year}年）` : "";
+  return `OpenAlex 2年平均被引用数${year}。Clarivate JIFではありません。`;
 }
 
 function reviewerValue() {
@@ -236,16 +254,19 @@ function titleTranslation(candidate) {
 function renderCandidate() {
   const candidate = currentCandidate();
   if (!candidate) {
-    const message = state.loading ? "候補を読み込んでいます…" : "このキューの未判定候補はありません。";
+    const emptyLabel = reviewStatusLabels[elements["review-status"].value];
+    const message = state.loading ? "候補を読み込んでいます…" : `このキューの${emptyLabel}候補はありません。`;
     elements.candidate.replaceChildren(text("p", message));
     elements["queue-status"].textContent = state.loading ? "読込中" : "完了";
     elements.skip.disabled = true;
+    elements["needs-review"].textContent = "保留";
     disableDecisions(true);
     return;
   }
 
   const fragment = document.createDocumentFragment();
-  fragment.append(text("p", candidate.screeningHint.replaceAll("_", " "), "candidate-number"));
+  const candidateState = reviewStatusLabels[candidate.reviewStatus] ?? candidate.reviewStatus;
+  fragment.append(text("p", `${candidateState} · ${candidate.screeningHint.replaceAll("_", " ")}`, "candidate-number"));
   fragment.append(text("p", "英語原文", "translation-label"));
   const heading = text("h2", candidate.title);
   heading.lang = candidate.language ?? "en";
@@ -256,7 +277,10 @@ function renderCandidate() {
     candidate.journal,
     candidate.journal ? journalMetricLabel(candidate) : null,
   ].filter(Boolean).join(" · ");
-  fragment.append(text("p", metadata || "書誌metadata未収録", "metadata"));
+  const metadataText = text("p", metadata || "書誌metadata未収録", "metadata");
+  const metricDescription = journalMetricDescription(candidate);
+  if (metricDescription) metadataText.title = metricDescription;
+  fragment.append(metadataText);
   if (candidate.authors.length) fragment.append(text("p", candidate.authors.join(" · "), "authors"));
   fragment.append(text("p", candidate.candidateKey, "candidate-key"));
 
@@ -274,27 +298,30 @@ function renderCandidate() {
   if (candidate.pmcid) links.append(sourceLink("PMC", `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(candidate.pmcid)}/`));
   const sourceUrl = safeUrl(candidate.sourceUrl);
   if (sourceUrl) links.append(sourceLink("原資料", sourceUrl));
+  if (links.childElementCount) fragment.append(links);
+  const actions = document.createElement("div");
+  actions.className = "candidate-actions";
+  const bookmarked = isBookmarked(candidate.candidateKey);
+  const bookmarkButton = text("button", bookmarked ? "保存済み" : "ブックマーク", "source-link bookmark-button");
+  bookmarkButton.type = "button";
+  bookmarkButton.setAttribute("aria-pressed", String(bookmarked));
+  bookmarkButton.addEventListener("click", () => toggleBookmark(candidate));
+  actions.append(bookmarkButton);
   if (candidate.pmid || candidate.pmcid || candidate.doi) {
     const abstractButton = text("button", "要旨対訳", "source-link abstract-button");
     abstractButton.type = "button";
     abstractButton.addEventListener("click", () => openAbstract(candidate));
-    links.append(abstractButton);
+    actions.append(abstractButton);
   }
-  const bookmarked = isBookmarked(candidate.candidateKey);
-  const bookmarkButton = document.createElement("button");
-  bookmarkButton.className = "source-link bookmark-button";
-  bookmarkButton.type = "button";
-  bookmarkButton.setAttribute("aria-pressed", String(bookmarked));
-  bookmarkButton.append(materialIcon(bookmarked ? "bookmark" : "bookmark_border"), bookmarked ? "保存済み" : "ブックマーク");
-  bookmarkButton.addEventListener("click", () => toggleBookmark(candidate));
-  links.append(bookmarkButton);
-  fragment.append(links);
-  fragment.append(text("p", "判断するのは収録scopeです。研究結果がpositiveかnegativeかでは決めません。", "review-note"));
+  fragment.append(actions);
   elements.candidate.replaceChildren(fragment);
 
   elements["queue-status"].textContent = `端末に${state.queue.length}件読込済み`;
   elements.skip.disabled = state.queue.length < 2;
   disableDecisions(false);
+  const alreadyHeld = candidate.reviewStatus === "needs_review";
+  elements["needs-review"].textContent = alreadyHeld ? "保留済み" : "保留";
+  elements["needs-review"].disabled = alreadyHeld;
 }
 
 function renderProgress() {
@@ -348,7 +375,8 @@ async function loadQueue({ reset = false } = {}) {
   renderCandidate();
   try {
     const hint = elements["screening-hint"].value;
-    const result = await api(`/api/review/v1/queue?screeningHint=${encodeURIComponent(hint)}&limit=20`);
+    const reviewStatus = elements["review-status"].value;
+    const result = await api(`/api/review/v1/queue?screeningHint=${encodeURIComponent(hint)}&reviewStatus=${encodeURIComponent(reviewStatus)}&limit=20`);
     const existing = new Set(state.queue.map((candidate) => candidate.candidateKey));
     const added = [];
     result.data.forEach((candidate) => {
@@ -388,7 +416,7 @@ function bookmarkItem(candidate) {
   const item = document.createElement("article");
   item.className = "bookmark-item";
   item.append(text("strong", candidate.title));
-  item.append(text(
+  const metadata = text(
     "span",
     [
       candidate.publicationYear,
@@ -398,7 +426,10 @@ function bookmarkItem(candidate) {
       candidate.candidateKey,
     ].filter(Boolean).join(" · "),
     "bookmark-item-meta",
-  ));
+  );
+  const metricDescription = journalMetricDescription(candidate);
+  if (metricDescription) metadata.title = metricDescription;
+  item.append(metadata);
   const actions = document.createElement("div");
   actions.className = "bookmark-item-actions";
   const sourceUrl = bookmarkSourceUrl(candidate);
@@ -482,21 +513,23 @@ function renderAbstract(abstract) {
   const fragment = document.createDocumentFragment();
   const meta = document.createElement("dl");
   meta.className = "abstract-meta";
-  meta.append(text("dt", "原資料掲載元"));
+  meta.append(text("dt", "抄録取得元"));
   const source = text("dd", abstract.source || "未収録");
   const sourceUrl = safeUrl(abstract.sourceUrl);
   if (sourceUrl) {
-    const link = sourceLink("原資料を開く", sourceUrl);
+    const link = sourceLink("開く", sourceUrl);
     link.className = "abstract-meta-link";
     source.append(" ", link);
   }
   meta.append(source);
   meta.append(text("dt", "掲載誌"), text("dd", abstract.journal || "未収録"));
-  meta.append(text("dt", "IF相当"));
-  const metric = text("dd", journalMetricLabel(abstract, "未収録").replace(/^IF相当\s*/u, ""));
+  meta.append(text("dt", "引用指標"));
+  const metric = text("dd", journalMetricLabel(abstract, "未収録").replace(/^引用指標\s*/u, ""));
+  const metricDescription = journalMetricDescription(abstract);
+  if (metricDescription) metric.title = metricDescription;
   const metricUrl = safeUrl(abstract.journalMetric?.sourceUrl);
   if (metricUrl) {
-    const link = sourceLink("指標出典", metricUrl);
+    const link = sourceLink("出典", metricUrl);
     link.className = "abstract-meta-link";
     metric.append(" ", link);
   }
@@ -541,11 +574,8 @@ async function openAbstract(candidate) {
     renderAbstract(result.data);
   } catch (error) {
     if (error.code === "translation_disabled") state.translationDisabled = true;
-    const message = error.code === "translation_disabled"
-      ? "翻訳APIの設定後に要旨対訳を表示します。"
-      : error.code === "abstract_unavailable"
-        ? "Europe PMCから利用可能な要旨を取得できませんでした。原資料を確認してください。"
-        : "要旨対訳を取得できませんでした。時間をおいて再試行してください。";
+    const message = abstractErrorMessages[error.code]
+      ?? "要旨対訳を取得できませんでした。時間をおいて再試行してください。";
     elements["abstract-content"].replaceChildren(text("p", message, "abstract-status"));
   }
 }
@@ -686,6 +716,10 @@ const savedHint = localStorage.getItem("candidate-review-hint");
 if ([...elements["screening-hint"].options].some((option) => option.value === savedHint)) {
   elements["screening-hint"].value = savedHint;
 }
+const savedReviewStatus = localStorage.getItem("candidate-review-status");
+if ([...elements["review-status"].options].some((option) => option.value === savedReviewStatus)) {
+  elements["review-status"].value = savedReviewStatus;
+}
 elements.reviewer.addEventListener("input", () => {
   localStorage.setItem("candidate-reviewer", reviewerValue());
   elements["reviewer-history"].value = state.reviewers.some((entry) => entry.reviewer === reviewerValue())
@@ -706,6 +740,12 @@ elements["screening-hint"].addEventListener("change", () => {
   state.lastSaved = null;
   elements["revise-last"].hidden = true;
   Promise.all([loadProgress(), loadQueue({ reset: true })]).catch((error) => showToast(error.message));
+});
+elements["review-status"].addEventListener("change", () => {
+  localStorage.setItem("candidate-review-status", elements["review-status"].value);
+  state.lastSaved = null;
+  elements["revise-last"].hidden = true;
+  loadQueue({ reset: true }).catch((error) => showToast(error.message));
 });
 elements.skip.addEventListener("click", () => {
   state.queue.push(state.queue.shift());

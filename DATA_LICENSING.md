@@ -16,11 +16,11 @@ Title、authors、DOI、PMID、journal等のmetadataはsourceごとのterms、da
 
 Phase 2のPubMed、Europe PMC、Crossref候補はsource record URLとsource-specificなrights noteを保持します。Crossref recordにCreative Commons URLが明示される場合は対応するrights statusへ正規化しますが、metadata全体や論文本文へ同じlicenseが及ぶとは推定しません。PubMed/Europe PMCの出所だけを根拠に自由再配布可能とは判定しません。
 
-掲載誌の`IF相当`には、CC0で提供されるOpenAlexの`2yr_mean_citedness`を使い、指標種別、基準年、OpenAlex source、取得時刻を分離して保存します。ClarivateのJournal Impact Factorではないため、公式JIFとは表示・データ上とも混同しません。
+掲載誌の`引用指標`には、CC0で提供されるOpenAlexの`2yr_mean_citedness`を使い、指標種別、基準年、OpenAlex source、取得時刻を分離して保存します。ClarivateのJournal Impact Factorではないため、公式JIFとは表示・データ上とも混同しません。
 
 ## Abstracts
 
-Abstractは無条件に自由再配布可能とは仮定しません。sourceのlicenseが明確でないabstract全文は保存・再配布せず、必要な場合も検証目的の短いsnippetとlocatorを優先します。非公開review画面の要旨対訳はEurope PMCから要求時だけ取得し、要旨原文・DeepL訳ともD1やGitへ保存せずブラウザタブのmemoryへ一時保持します。画面表示は再配布許諾を意味せず、原資料のlicense確認を必要とします。
+Abstractは無条件に自由再配布可能とは仮定しません。sourceのlicenseが明確でないabstract全文は保存・再配布せず、必要な場合も検証目的の短いsnippetとlocatorを優先します。非公開review画面の要旨対訳は、候補の出版社と識別子に応じて出版社の公式API、PubMed、Europe PMC、Crossrefの優先順を切り替えて要求時だけ取得し、未収録時は残りの取得元、OpenAlex要旨インデックス、OpenAIRE Research Graphへfallbackします。要旨原文・DeepL訳ともD1やGitへ保存せずブラウザタブのmemoryへ一時保持します。画面表示は再配布許諾を意味せず、原資料のlicense確認を必要とします。
 
 ## Publisher content
 

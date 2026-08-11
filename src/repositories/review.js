@@ -70,15 +70,15 @@ const bookmarkedCandidateColumns = `
 
 export const reviewHints = ["likely_biomedical", "needs_review", "likely_non_biomedical"];
 
-export function buildReviewQueueStatement({ screeningHint, limit }) {
+export function buildReviewQueueStatement({ screeningHint, reviewStatus, limit }) {
   return {
     sql: `SELECT ${queueColumns}
       FROM study_candidates c
       ${journalMetricJoin}
-      WHERE c.screening_hint = ? AND c.review_status = 'pending'
+      WHERE c.screening_hint = ? AND c.review_status = ?
       ORDER BY c.id
       LIMIT ?`,
-    bindings: [screeningHint, limit],
+    bindings: [screeningHint, reviewStatus, limit],
   };
 }
 
@@ -109,8 +109,8 @@ function duplicateIdentifiers(identifier) {
 
 export function createReviewRepository(db) {
   return {
-    async getQueue({ screeningHint, limit }) {
-      const result = await prepared(db, buildReviewQueueStatement({ screeningHint, limit })).all();
+    async getQueue({ screeningHint, reviewStatus, limit }) {
+      const result = await prepared(db, buildReviewQueueStatement({ screeningHint, reviewStatus, limit })).all();
       return result.results ?? [];
     },
 
@@ -299,7 +299,14 @@ export function createReviewRepository(db) {
           AND TRIM(c.journal) <> ''
           AND (jm.refreshed_at IS NULL OR jm.refreshed_at < ?)
         GROUP BY LOWER(TRIM(c.journal))
-        ORDER BY COALESCE(jm.refreshed_at, ''), lookup_title_key
+        ORDER BY COALESCE(jm.refreshed_at, ''),
+          MIN(CASE c.screening_hint
+            WHEN 'likely_biomedical' THEN 0
+            WHEN 'needs_review' THEN 1
+            ELSE 2
+          END),
+          MIN(CASE WHEN c.review_status = 'pending' THEN c.id ELSE 2147483647 END),
+          MIN(c.id)
         LIMIT ?`).bind(metricYear, staleBefore, limit).all();
       return result.results ?? [];
     },

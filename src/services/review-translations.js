@@ -1,5 +1,5 @@
 import { glossaryVersion, TranslationProviderError } from "../translation/deepl.js";
-import { fetchEuropePmcAbstract } from "../translation/europe-pmc.js";
+import { fetchArticleAbstract } from "../translation/europe-pmc.js";
 
 const textEncoder = new TextEncoder();
 const glossarySettingKey = `deepl-glossary:${glossaryVersion}`;
@@ -41,7 +41,12 @@ function translationFailure(error) {
     return new ReviewTranslationError(error.message, error.status, code);
   }
   if (error?.name === "AbstractSourceError") {
-    return new ReviewTranslationError(error.message, error.status, "abstract_unavailable");
+    const sourceCodes = new Set(["pubmed_abstract_missing", "abstract_missing", "abstract_fetch_failed"]);
+    const code = sourceCodes.has(error.code) ? error.code : "abstract_fetch_failed";
+    const message = code === "abstract_fetch_failed"
+      ? "Abstract could not be retrieved."
+      : "Abstract is not available.";
+    return new ReviewTranslationError(message, error.status, code);
   }
   return new ReviewTranslationError("Translation failed.", 502);
 }
@@ -50,6 +55,9 @@ export function createReviewTranslationService({
   repository,
   deepLClient,
   fetchImpl = fetch,
+  springerNatureApiKey = "",
+  elsevierApiKey = "",
+  openAlexApiKey = "",
   now = Date.now,
 }) {
   async function glossaryId() {
@@ -130,7 +138,11 @@ export function createReviewTranslationService({
       try {
         const candidate = await repository.getCandidate(candidateKey);
         if (!candidate) throw new ReviewTranslationError("Candidate not found.", 404, "candidate_not_found");
-        const abstract = await fetchEuropePmcAbstract(candidate, fetchImpl);
+        const abstract = await fetchArticleAbstract(candidate, fetchImpl, {
+          springerNatureApiKey,
+          elsevierApiKey,
+          openAlexApiKey,
+        });
         const sentences = splitEnglishSentences(abstract.text);
         if (!sentences.length) throw new ReviewTranslationError("Abstract is empty.", 404, "abstract_unavailable");
         const translations = await deepLClient.translateEnglishToJapanese(sentences, {

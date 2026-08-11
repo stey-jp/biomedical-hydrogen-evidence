@@ -16,6 +16,7 @@
     "extraction:dry-run": "node scripts/extraction/dry-run.mjs",
     "review:candidates": "node scripts/review/candidates.mjs",
     "review:fields": "node scripts/review/fields.mjs",
+    "review:journal-metrics:remote": "node scripts/review/refresh-journal-metrics.mjs",
     "check:worker-boundary": "wrangler deploy --dry-run --outdir=.generated/worker-bundle && node scripts/check-worker-boundary.mjs",
     "test": "node --test",
     "lint": "node scripts/check-syntax.mjs",

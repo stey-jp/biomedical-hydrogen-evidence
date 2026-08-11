@@ -1,5 +1,5 @@
 const refreshIntervalMs = 30 * 24 * 60 * 60 * 1000;
-const requestBatchSize = 5;
+const requestBatchSize = 1;
 
 export function currentMetricYear(now = Date.now()) {
   return new Date(now).getUTCFullYear() - 1;
@@ -14,7 +14,7 @@ export async function refreshJournalMetrics({
   client,
   now = Date.now,
   waitImpl = wait,
-  limit = 20,
+  limit = 12,
 }) {
   if (!client.configured) return { configured: false, refreshed: 0 };
   const timestamp = now();
@@ -23,13 +23,19 @@ export async function refreshJournalMetrics({
   const staleBefore = new Date(timestamp - refreshIntervalMs).toISOString();
   const queue = await repository.getJournalMetricRefreshQueue({ metricYear, staleBefore, limit });
   let refreshed = 0;
+  let failed = 0;
   for (let offset = 0; offset < queue.length; offset += requestBatchSize) {
     const batch = queue.slice(offset, offset + requestBatchSize);
-    const lookups = await Promise.all(batch.map(async (row) => ({
-      row,
-      result: await client.lookup(row.journal),
-    })));
-    await repository.saveJournalMetrics(lookups.map(({ row, result }) => ({
+    const lookups = await Promise.all(batch.map(async (row) => {
+      try {
+        return { row, result: await client.lookup(row.journal) };
+      } catch {
+        return { row, result: null };
+      }
+    }));
+    const successful = lookups.filter(({ result }) => result !== null);
+    failed += lookups.length - successful.length;
+    await repository.saveJournalMetrics(successful.map(({ row, result }) => ({
       lookupTitleKey: row.lookup_title_key,
       lookupTitle: row.journal,
       matchedJournalTitle: result.journalTitle,
@@ -43,8 +49,8 @@ export async function refreshJournalMetrics({
       matchStatus: result.matchStatus,
       refreshedAt,
     })));
-    refreshed += batch.length;
+    refreshed += successful.length;
     if (offset + requestBatchSize < queue.length) await waitImpl(1_100);
   }
-  return { configured: true, metricYear, queued: queue.length, refreshed };
+  return { configured: true, metricYear, queued: queue.length, refreshed, failed };
 }

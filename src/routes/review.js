@@ -12,6 +12,7 @@ import { createDeepLClient } from "../translation/deepl.js";
 import { errorResponse, jsonResponse } from "../utils/responses.js";
 
 const decisions = new Set(["include", "exclude", "duplicate", "needs_review"]);
+const queueReviewStatuses = new Set(["pending", "needs_review"]);
 const textEncoder = new TextEncoder();
 
 function securedJson(request, value, init = {}) {
@@ -100,6 +101,10 @@ function screeningHint(value) {
 function queueLimit(value) {
   const parsed = Number(value ?? 20);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 40 ? parsed : 20;
+}
+
+function queueReviewStatus(value) {
+  return queueReviewStatuses.has(value) ? value : "pending";
 }
 
 function parseJsonArray(value) {
@@ -302,6 +307,9 @@ function translationService(env, repository, options, now) {
       fetchImpl: options.fetchImpl,
     }),
     fetchImpl: options.fetchImpl,
+    springerNatureApiKey: env.SPRINGER_NATURE_API_KEY,
+    elsevierApiKey: env.ELSEVIER_API_KEY,
+    openAlexApiKey: env.OPENALEX_API_KEY,
     now,
   });
 }
@@ -376,11 +384,13 @@ export async function handleReview(request, env, options = {}) {
   }
   if (url.pathname === "/api/review/v1/queue" && request.method === "GET") {
     const hint = screeningHint(url.searchParams.get("screeningHint"));
+    const reviewStatus = queueReviewStatus(url.searchParams.get("reviewStatus"));
     const rows = await repository.getQueue({
       screeningHint: hint,
+      reviewStatus,
       limit: queueLimit(url.searchParams.get("limit")),
     });
-    return securedJson(request, { data: rows.map(candidateView), screeningHint: hint });
+    return securedJson(request, { data: rows.map(candidateView), screeningHint: hint, reviewStatus });
   }
   if (url.pathname === "/api/review/v1/progress" && request.method === "GET") {
     const hint = screeningHint(url.searchParams.get("screeningHint"));

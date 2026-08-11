@@ -84,11 +84,15 @@ test("review session uses a signed, expiring HttpOnly cookie without retaining t
 });
 
 test("review repository queue and progress statements stay bound and indexable", () => {
-  const queue = buildReviewQueueStatement({ screeningHint: "likely_biomedical", limit: 20 });
-  assert.match(queue.sql, /c\.screening_hint = \? AND c\.review_status = 'pending'/u);
+  const queue = buildReviewQueueStatement({
+    screeningHint: "likely_biomedical",
+    reviewStatus: "needs_review",
+    limit: 20,
+  });
+  assert.match(queue.sql, /c\.screening_hint = \? AND c\.review_status = \?/u);
   assert.match(queue.sql, /LEFT JOIN journal_metrics/u);
   assert.match(queue.sql, /ORDER BY c\.id/u);
-  assert.deepEqual(queue.bindings, ["likely_biomedical", 20]);
+  assert.deepEqual(queue.bindings, ["likely_biomedical", "needs_review", 20]);
 
   const progress = buildReviewProgressStatement("needs_review");
   assert.match(progress.sql, /GROUP BY review_status/u);
@@ -193,7 +197,7 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
   const recorded = [];
   const repository = {
     async getQueue(input) {
-      assert.deepEqual(input, { screeningHint: "likely_biomedical", limit: 20 });
+      assert.deepEqual(input, { screeningHint: "likely_biomedical", reviewStatus: "pending", limit: 20 });
       return [candidate];
     },
     async getProgress() {
@@ -229,6 +233,22 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
     sourceUrl: "https://openalex.org/S123",
     refreshedAt: "2026-08-11T00:00:00Z",
   });
+  assert.equal(queueBody.reviewStatus, "pending");
+
+  const heldQueueResponse = await handleReview(request("/api/review/v1/queue?reviewStatus=needs_review", {
+    headers: { cookie },
+  }), { REVIEW_ADMIN_TOKEN: secret }, {
+    repository: {
+      ...repository,
+      async getQueue(input) {
+        assert.deepEqual(input, { screeningHint: "likely_biomedical", reviewStatus: "needs_review", limit: 20 });
+        return [{ ...candidate, review_status: "needs_review" }];
+      },
+    },
+    now: () => now,
+  });
+  assert.equal(heldQueueResponse.status, 200);
+  assert.equal((await heldQueueResponse.json()).data[0].reviewStatus, "needs_review");
 
   const reviewersResponse = await handleReview(request("/api/review/v1/reviewers", {
     headers: { cookie },

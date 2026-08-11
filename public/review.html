@@ -8,7 +8,7 @@
   <meta name="color-scheme" content="light">
   <title>Candidate Review · Biomedical Hydrogen Evidence</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&amp;icon_names=bookmark,bookmark_border,close,settings&amp;display=block">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&amp;icon_names=close,settings&amp;display=block">
   <link rel="stylesheet" href="/css/review.css">
 </head>
 <body>
@@ -57,10 +57,10 @@
       </nav>
 
       <section class="decision-bar" aria-label="Screening判定">
-        <button id="include" type="button" class="decision include">採用</button>
         <button id="exclude" type="button" class="decision exclude">対象外</button>
-        <button id="needs-review" type="button" class="decision needs-review">保留</button>
+        <button id="include" type="button" class="decision include">採用</button>
         <button id="duplicate" type="button" class="decision duplicate">重複</button>
+        <button id="needs-review" type="button" class="decision needs-review">保留</button>
       </section>
     </div>
   </main>
@@ -72,6 +72,12 @@
         <button id="close-options" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <div class="options-fields">
+        <label>表示する判定状態
+          <select id="review-status">
+            <option value="pending">未判定</option>
+            <option value="needs_review">保留済み</option>
+          </select>
+        </label>
         <label>対象キュー
           <select id="screening-hint">
             <option value="likely_biomedical">優先候補</option>

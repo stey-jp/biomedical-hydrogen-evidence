@@ -7,7 +7,15 @@ import {
 } from "../src/translation/deepl.js";
 import {
   europePmcQuery,
+  fetchArticleAbstract,
+  fetchCrossrefAbstract,
+  fetchElsevierAbstract,
   fetchEuropePmcAbstract,
+  fetchOpenAireAbstract,
+  fetchOpenAlexAbstract,
+  fetchPubMedAbstract,
+  fetchSpringerNatureAbstract,
+  isElsevierCandidate,
 } from "../src/translation/europe-pmc.js";
 import {
   createReviewTranslationService,
@@ -140,6 +148,450 @@ test("Europe PMC lookup falls back to the free full-text XML abstract", async ()
   assert.equal(result.text, "Abstract Background Molecular hydrogen & saline were compared.");
   assert.doesNotMatch(result.text, /Full text must not be returned/u);
   assert.equal(result.sourceUrl, "https://europepmc.org/article/PMC/PMC789");
+});
+
+test("PubMed E-Fetch returns an exact PMID abstract and identifies records without abstracts", async () => {
+  let requestedUrl;
+  const result = await fetchPubMedAbstract({ pmid: "123" }, async (url, init) => {
+    requestedUrl = new URL(url);
+    assert.equal(init.headers.accept, "application/xml");
+    return new Response(`
+      <PubmedArticleSet>
+        <PubmedArticle>
+          <MedlineCitation><PMID Version="1">123</PMID><Article><Abstract>
+            <AbstractText Label="BACKGROUND">Molecular hydrogen &amp; saline were compared.</AbstractText>
+            <AbstractText Label="RESULTS">Treatment was tolerated.</AbstractText>
+          </Abstract></Article></MedlineCitation>
+        </PubmedArticle>
+      </PubmedArticleSet>
+    `);
+  });
+  assert.equal(requestedUrl.searchParams.get("db"), "pubmed");
+  assert.equal(requestedUrl.searchParams.get("id"), "123");
+  assert.equal(requestedUrl.searchParams.get("retmode"), "xml");
+  assert.equal(requestedUrl.searchParams.get("tool"), "biomedical_hydrogen_evidence");
+  assert.equal(result.text, "Molecular hydrogen & saline were compared. Treatment was tolerated.");
+  assert.equal(result.source, "PubMed");
+
+  await assert.rejects(
+    fetchPubMedAbstract({ pmid: "25468479" }, async () => new Response(`
+      <PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>25468479</PMID><Article>
+        <ArticleTitle>Can an innocent toy become dangerous?</ArticleTitle>
+      </Article></MedlineCitation></PubmedArticle></PubmedArticleSet>
+    `)),
+    (error) => error?.name === "AbstractSourceError"
+      && error.status === 404
+      && error.code === "pubmed_abstract_missing",
+  );
+});
+
+test("article abstract lookup prefers PubMed E-Fetch for PMID candidates", async () => {
+  const requestedHosts = [];
+  const result = await fetchArticleAbstract({ pmid: "123" }, async (url) => {
+    const requestedUrl = new URL(url);
+    requestedHosts.push(requestedUrl.hostname);
+    if (requestedUrl.hostname === "eutils.ncbi.nlm.nih.gov") {
+      return new Response(`
+        <PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article><Abstract>
+          <AbstractText>PubMed fallback abstract.</AbstractText>
+        </Abstract></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>
+      `);
+    }
+    return Response.json({ resultList: { result: [{ pmid: "123", abstractText: "Europe PMC abstract." }] } });
+  });
+  assert.deepEqual(requestedHosts, ["eutils.ncbi.nlm.nih.gov"]);
+  assert.equal(result.text, "PubMed fallback abstract.");
+  assert.equal(result.source, "PubMed");
+});
+
+test("article abstract lookup falls back from PubMed to Europe PMC", async () => {
+  const requestedHosts = [];
+  const result = await fetchArticleAbstract({ pmid: "123" }, async (url) => {
+    const requestedUrl = new URL(url);
+    requestedHosts.push(requestedUrl.hostname);
+    if (requestedUrl.hostname === "eutils.ncbi.nlm.nih.gov") {
+      return new Response(`
+        <PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article>
+          <ArticleTitle>Record without an abstract</ArticleTitle>
+        </Article></MedlineCitation></PubmedArticle></PubmedArticleSet>
+      `);
+    }
+    return Response.json({
+      resultList: { result: [{ pmid: "123", abstractText: "Europe PMC fallback abstract." }] },
+    });
+  });
+  assert.deepEqual(requestedHosts, ["eutils.ncbi.nlm.nih.gov", "www.ebi.ac.uk"]);
+  assert.equal(result.text, "Europe PMC fallback abstract.");
+  assert.equal(result.source, "Europe PMC");
+});
+
+test("article abstract lookup prefers Europe PMC for PMCID candidates", async () => {
+  const requestedHosts = [];
+  const result = await fetchArticleAbstract({ pmcid: "PMC789", pmid: "123" }, async (url) => {
+    const requestedUrl = new URL(url);
+    requestedHosts.push(requestedUrl.hostname);
+    return Response.json({
+      resultList: {
+        result: [{ pmcid: "PMC789", pmid: "123", abstractText: "Europe PMC primary abstract." }],
+      },
+    });
+  });
+  assert.deepEqual(requestedHosts, ["www.ebi.ac.uk"]);
+  assert.equal(result.text, "Europe PMC primary abstract.");
+  assert.equal(result.source, "Europe PMC");
+});
+
+test("article abstract lookup prefers Crossref for an unrecognized DOI publisher", async () => {
+  const requestedUrls = [];
+  const result = await fetchArticleAbstract({ doi: "10.1002/example.123" }, async (url, init) => {
+    requestedUrls.push({ url: String(url), accept: init.headers.accept, userAgent: init.headers["user-agent"] });
+    if (String(url).startsWith("https://api.crossref.org/")) {
+      return Response.json({
+        message: {
+          abstract: "<jats:title>ABSTRACT</jats:title><jats:p>Hydrogen-rich water was compared with placebo &amp; usual care.</jats:p>",
+        },
+      });
+    }
+    return Response.json({ resultList: { result: [] } });
+  });
+
+  assert.equal(requestedUrls.length, 1);
+  assert.equal(requestedUrls[0].url, "https://api.crossref.org/v1/works/10.1002%2Fexample.123");
+  assert.match(requestedUrls[0].userAgent, /biomedical-hydrogen-evidence/u);
+  assert.equal(result.text, "Hydrogen-rich water was compared with placebo & usual care.");
+  assert.equal(result.source, "Crossref（出版社提供要旨）");
+  assert.equal(result.sourceUrl, "https://doi.org/10.1002/example.123");
+  assert.equal(result.rightsStatus, "copyright_status_unknown");
+});
+
+test("Crossref abstract lookup reports missing abstracts without returning other metadata", async () => {
+  await assert.rejects(
+    fetchCrossrefAbstract({ doi: "10.1002/example.456" }, async () => Response.json({
+      message: { title: ["Metadata-only record"] },
+    })),
+    (error) => error instanceof Error
+      && error.name === "AbstractSourceError"
+      && error.status === 404,
+  );
+});
+
+test("article abstract lookup routes Springer Nature candidates to the publisher API first", async () => {
+  const requestedUrls = [];
+  const candidate = { doi: "10.1007/s00344-022-10696-0" };
+  const result = await fetchArticleAbstract(candidate, async (url) => {
+    const requestedUrl = new URL(url);
+    requestedUrls.push(requestedUrl);
+    if (requestedUrl.hostname === "api.springernature.com") {
+      return Response.json({
+        records: [{
+          doi: candidate.doi,
+          abstract: "<p>Hydrogen-rich water improved fragrant rice seedling growth under nitrogen deficiency.</p>",
+        }],
+      });
+    }
+    if (requestedUrl.hostname === "api.crossref.org") return Response.json({ message: {} });
+    return Response.json({ resultList: { result: [] } });
+  }, { springerNatureApiKey: "springer-test-key" });
+
+  assert.equal(requestedUrls.length, 1);
+  assert.equal(requestedUrls[0].origin + requestedUrls[0].pathname, "https://api.springernature.com/meta/v2/json");
+  assert.equal(requestedUrls[0].searchParams.get("q"), `doi:${candidate.doi}`);
+  assert.equal(requestedUrls[0].searchParams.get("p"), "1");
+  assert.equal(requestedUrls[0].searchParams.get("api_key"), "springer-test-key");
+  assert.equal(result.text, "Hydrogen-rich water improved fragrant rice seedling growth under nitrogen deficiency.");
+  assert.equal(result.source, "Springer Nature Metadata API");
+  assert.equal(result.sourceUrl, "https://doi.org/10.1007/s00344-022-10696-0");
+});
+
+test("Springer Nature lookup requires an exact DOI match", async () => {
+  await assert.rejects(
+    fetchSpringerNatureAbstract(
+      { doi: "10.1007/expected" },
+      "springer-test-key",
+      async () => Response.json({ records: [{ doi: "10.1007/other", abstract: "Wrong abstract." }] }),
+    ),
+    (error) => error?.name === "AbstractSourceError" && error.status === 404,
+  );
+});
+
+test("article abstract lookup routes ScienceDirect candidates to the Elsevier Article Retrieval API", async () => {
+  const requested = [];
+  const candidate = {
+    doi: "10.1016/j.example.2026.123456",
+    publisher: "Elsevier BV",
+  };
+  const result = await fetchArticleAbstract(candidate, async (url, init) => {
+    const requestedUrl = new URL(url);
+    requested.push({ url: requestedUrl, headers: new Headers(init.headers) });
+    if (requestedUrl.hostname === "api.elsevier.com") {
+      return Response.json({
+        "full-text-retrieval-response": {
+          coredata: {
+            "prism:doi": candidate.doi,
+            "dc:description": "<p>Abstract: Molecular hydrogen reduced oxidative stress.</p>",
+            link: [{
+              "@rel": "scidir",
+              "@href": "http://www.sciencedirect.com/science/article/pii/S1234567890",
+            }],
+          },
+        },
+      });
+    }
+    if (requestedUrl.hostname === "api.crossref.org") return Response.json({ message: {} });
+    return Response.json({ resultList: { result: [] } });
+  }, { elsevierApiKey: "elsevier-test-key" });
+
+  assert.equal(isElsevierCandidate(candidate), true);
+  assert.equal(requested.length, 1);
+  assert.equal(
+    requested[0].url.origin + requested[0].url.pathname,
+    "https://api.elsevier.com/content/article/doi/10.1016/j.example.2026.123456",
+  );
+  assert.equal(requested[0].url.searchParams.get("view"), "META_ABS");
+  assert.equal(requested[0].url.searchParams.has("apiKey"), false);
+  assert.equal(requested[0].headers.get("x-els-apikey"), "elsevier-test-key");
+  assert.equal(result.text, "Molecular hydrogen reduced oxidative stress.");
+  assert.equal(result.source, "ScienceDirect（Elsevier Article Retrieval API）");
+  assert.equal(result.sourceUrl, "https://www.sciencedirect.com/science/article/pii/S1234567890");
+});
+
+test("Elsevier lookup supports a ScienceDirect PII URL when DOI metadata is missing", async () => {
+  let requestedUrl;
+  const result = await fetchElsevierAbstract({
+    source_url: "https://www.sciencedirect.com/science/article/pii/S0014579301033130",
+  }, "elsevier-test-key", async (url) => {
+    requestedUrl = new URL(url);
+    return Response.json({
+      "full-text-retrieval-response": {
+        coredata: {
+          pii: "S0014579301033130",
+          "dc:description": "A ScienceDirect abstract.",
+        },
+      },
+    });
+  });
+
+  assert.equal(requestedUrl.pathname, "/content/article/pii/S0014579301033130");
+  assert.equal(result.text, "A ScienceDirect abstract.");
+  assert.equal(result.sourceUrl, "https://www.sciencedirect.com/science/article/pii/S0014579301033130");
+});
+
+test("Elsevier lookup falls back to the Scopus abstract for a conference abstract", async () => {
+  const requestedUrls = [];
+  const doi = "10.1016/j.clnesp.2022.09.747";
+  const result = await fetchElsevierAbstract({ doi }, "elsevier-test-key", async (url) => {
+    const requestedUrl = new URL(url);
+    requestedUrls.push(requestedUrl);
+    if (requestedUrl.pathname.startsWith("/content/article/")) {
+      return Response.json({
+        "full-text-retrieval-response": {
+          coredata: { "prism:doi": doi },
+        },
+      });
+    }
+    return Response.json({
+      "abstracts-retrieval-response": {
+        coredata: {
+          "prism:doi": doi,
+          "dc:description": "Abstract: Hydrogen-rich water improved neuropsychological performance.",
+        },
+      },
+    });
+  });
+
+  assert.deepEqual(
+    requestedUrls.map((url) => url.pathname),
+    [
+      "/content/article/doi/10.1016/j.clnesp.2022.09.747",
+      "/content/abstract/doi/10.1016/j.clnesp.2022.09.747",
+    ],
+  );
+  assert.equal(result.text, "Hydrogen-rich water improved neuropsychological performance.");
+  assert.equal(result.source, "Scopus（Elsevier Abstract Retrieval API）");
+  assert.equal(result.sourceUrl, `https://doi.org/${doi}`);
+});
+
+test("ScienceDirect lookup falls back to an exact DOI abstract from OpenAlex", async () => {
+  const requestedUrls = [];
+  const doi = "10.1006/mthe.2001.0297";
+  const result = await fetchArticleAbstract({ doi, publisher: "Elsevier BV" }, async (url) => {
+    const requestedUrl = new URL(url);
+    requestedUrls.push(requestedUrl);
+    if (requestedUrl.hostname === "api.crossref.org") return Response.json({ message: {} });
+    if (requestedUrl.hostname === "api.elsevier.com") return new Response(null, { status: 403 });
+    if (requestedUrl.hostname === "api.openalex.org") {
+      return Response.json({
+        id: "https://openalex.org/W123",
+        doi: `https://doi.org/${doi}`,
+        abstract_inverted_index: {
+          "stress.": [5],
+          Hydrogen: [0],
+          reduced: [1],
+          oxidative: [4],
+          treatment: [2],
+          plant: [3],
+        },
+      });
+    }
+    return Response.json({ resultList: { result: [] } });
+  }, {
+    elsevierApiKey: "elsevier-test-key",
+    openAlexApiKey: "openalex-test-key",
+  });
+
+  assert.equal(requestedUrls.length, 5);
+  assert.equal(requestedUrls[1].pathname, "/content/abstract/doi/10.1006/mthe.2001.0297");
+  assert.match(requestedUrls[4].pathname, /\/works\/https%3A%2F%2Fdoi\.org%2F10\.1006%2Fmthe\.2001\.0297$/u);
+  assert.equal(requestedUrls[4].searchParams.get("select"), "id,doi,abstract_inverted_index");
+  assert.equal(requestedUrls[4].searchParams.get("api_key"), "openalex-test-key");
+  assert.equal(result.text, "Hydrogen reduced treatment plant oxidative stress.");
+  assert.equal(result.source, "OpenAlex（要旨インデックス）");
+  assert.equal(result.sourceUrl, "https://openalex.org/W123");
+});
+
+test("OpenAIRE lookup returns an abstract only for an exact DOI record", async () => {
+  const doi = "10.1016/0022-2852(83)90039-5";
+  let requestedUrl;
+  const result = await fetchOpenAireAbstract({ doi }, async (url) => {
+    requestedUrl = new URL(url);
+    return Response.json({
+      response: {
+        results: {
+          result: [{
+            metadata: {
+              "oaf:entity": {
+                "oaf:result": {
+                  pid: { "@classid": "doi", $: doi },
+                  description: { $: "Abstract: Molecular hydrogen reduced oxidative stress." },
+                },
+              },
+            },
+          }],
+        },
+      },
+    });
+  });
+
+  assert.equal(requestedUrl.origin + requestedUrl.pathname, "https://api.openaire.eu/search/publications");
+  assert.equal(requestedUrl.searchParams.get("doi"), doi);
+  assert.equal(requestedUrl.searchParams.get("format"), "json");
+  assert.equal(result.text, "Molecular hydrogen reduced oxidative stress.");
+  assert.equal(result.source, "OpenAIRE Research Graph");
+
+  await assert.rejects(
+    fetchOpenAireAbstract({ doi }, async () => Response.json({
+      response: {
+        results: {
+          result: {
+            metadata: {
+              "oaf:entity": {
+                "oaf:result": {
+                  pid: { "@classid": "doi", $: "10.1016/wrong" },
+                  description: { $: "Wrong abstract." },
+                },
+              },
+            },
+          },
+        },
+      },
+    })),
+    (error) => error?.name === "AbstractSourceError" && error.status === 404,
+  );
+});
+
+test("OpenAlex lookup rejects malformed indexes and DOI mismatches", async () => {
+  await assert.rejects(
+    fetchOpenAlexAbstract({ doi: "10.1016/expected" }, "", async () => Response.json({
+      doi: "https://doi.org/10.1016/other",
+      abstract_inverted_index: { Wrong: [0] },
+    })),
+    (error) => error?.name === "AbstractSourceError" && error.status === 404,
+  );
+  await assert.rejects(
+    fetchOpenAlexAbstract({ doi: "10.1016/expected" }, "", async () => Response.json({
+      doi: "https://doi.org/10.1016/expected",
+      abstract_inverted_index: { Missing: [0], position: [2] },
+    })),
+    (error) => error?.name === "AbstractSourceError" && error.status === 404,
+  );
+  const oversizedIndex = Object.fromEntries(
+    Array.from({ length: 1_001 }, (_, index) => [`word${index}`, [index]]),
+  );
+  await assert.rejects(
+    fetchOpenAlexAbstract({ doi: "10.1016/expected" }, "", async () => Response.json({
+      doi: "https://doi.org/10.1016/expected",
+      abstract_inverted_index: oversizedIndex,
+    })),
+    (error) => error?.name === "AbstractSourceError" && error.status === 404,
+  );
+});
+
+test("abstract lookup uses a provider-neutral terminal error message", async () => {
+  await assert.rejects(
+    fetchArticleAbstract({ doi: "10.1234/no-abstract" }, async (url) => {
+      if (String(url).includes("crossref.org")) return Response.json({ message: {} });
+      return Response.json({ resultList: { result: [] } });
+    }),
+    (error) => error?.name === "AbstractSourceError"
+      && error.status === 404
+      && error.code === "abstract_missing"
+      && error.message === "Abstract is unavailable from configured sources."
+      && !/Europe PMC|Crossref|Springer|Elsevier/u.test(error.message),
+  );
+});
+
+test("review translation errors do not expose failed provider names", async () => {
+  const service = createReviewTranslationService({
+    repository: {
+      async getCandidate() {
+        return { doi: "10.1016/j.example.2026.999", publisher: "Elsevier BV" };
+      },
+    },
+    deepLClient: {},
+    elsevierApiKey: "elsevier-test-key",
+    fetchImpl: async (url) => {
+      if (String(url).includes("crossref.org")) return Response.json({ message: {} });
+      if (String(url).includes("elsevier.com")) return new Response(null, { status: 401 });
+      return Response.json({ resultList: { result: [] } });
+    },
+  });
+
+  await assert.rejects(
+    service.translateAbstract("candidate"),
+    (error) => error instanceof ReviewTranslationError
+      && error.code === "abstract_fetch_failed"
+      && error.message === "Abstract could not be retrieved."
+      && !/Europe PMC|Crossref|Springer|Elsevier/u.test(error.message),
+  );
+});
+
+test("review translation distinguishes PubMed records without abstracts", async () => {
+  const service = createReviewTranslationService({
+    repository: {
+      async getCandidate() {
+        return { pmid: "25468479" };
+      },
+    },
+    deepLClient: {},
+    fetchImpl: async (url) => {
+      if (new URL(url).hostname === "eutils.ncbi.nlm.nih.gov") {
+        return new Response(`
+          <PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>25468479</PMID><Article>
+            <ArticleTitle>Can an innocent toy become dangerous?</ArticleTitle>
+          </Article></MedlineCitation></PubmedArticle></PubmedArticleSet>
+        `);
+      }
+      return Response.json({ resultList: { result: [{ pmid: "25468479" }] } });
+    },
+  });
+
+  await assert.rejects(
+    service.translateAbstract("candidate"),
+    (error) => error instanceof ReviewTranslationError
+      && error.status === 404
+      && error.code === "pubmed_abstract_missing"
+      && error.message === "Abstract is not available.",
+  );
 });
 
 test("review translation service reuses title cache and writes only missing title translations", async () => {

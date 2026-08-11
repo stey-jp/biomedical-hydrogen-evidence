@@ -14,7 +14,7 @@ Cloudflare Worker
 ├─ /mcp ──────┼─ Study service ─ Repository ─ D1
 ├─ /healthz ──┘
 └─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + reviewer bookmarks + title translation cache
-                     └─ DeepL API Free + Europe PMC abstract lookup
+                     └─ DeepL API Free + Europe PMC / Crossref / publisher APIs / OpenAlex / OpenAIRE
 
 iOS / Android ── HTTPS GET ──► first-party REST API
 ```
@@ -36,7 +36,7 @@ generated review manifest + D1 import SQL
 study_candidates (not public search) ── human screening ──► studies
 ```
 
-Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳routeも同じ認証・same-origin・rate limit境界内に置き、DeepL Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、Europe PMC要旨と要旨訳は永続化しません。
+Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳routeも同じ認証・same-origin・rate limit境界内に置き、provider Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、外部sourceから取得した要旨と要旨訳は永続化しません。
 
 ```text
 authorized local source bundle
