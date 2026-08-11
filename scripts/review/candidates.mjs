@@ -5,11 +5,14 @@ import process from "node:process";
 import { encodeCsv, parseCsv } from "./csv.mjs";
 import { generateCandidateReviewSql } from "./candidate-sql.mjs";
 import { hashObject, projectRoot, sha256 } from "../extraction/shared.mjs";
+import {
+  assertReviewRowsReady,
+  buildCandidateReviewRows,
+  candidateReviewColumns,
+  chunkReviewRows,
+  screeningHints,
+} from "./candidate-batches.mjs";
 
-const columns = [
-  "candidate_key", "title", "doi", "pmid", "pmcid", "publication_year",
-  "screening_hint", "sources", "decision", "reason", "reviewer",
-];
 const decisions = new Set(["include", "exclude", "duplicate", "needs_review"]);
 
 function parseArguments(argv) {
@@ -27,10 +30,22 @@ function parseArguments(argv) {
     else if (name === "--csv") options.csvPath = value;
     else if (name === "--output-dir") options.outputDir = value;
     else if (name === "--approve-promotion") options.promotionApproval = value;
+    else if (name === "--screening-hint") options.screeningHint = value;
+    else if (name === "--batch-size") options.batchSize = Number(value);
     else throw new Error(`Unknown option: ${name}`);
   }
   if (!options.manifestPath) throw new Error("--manifest is required");
   if (command === "import" && !options.csvPath) throw new Error("--csv is required for import");
+  if (command === "import" && (options.screeningHint || options.batchSize)) {
+    throw new Error("--screening-hint and --batch-size are export-only options");
+  }
+  if (options.screeningHint && !screeningHints.has(options.screeningHint)) {
+    throw new Error(`Invalid screening hint: ${options.screeningHint}`);
+  }
+  if (options.batchSize !== undefined
+    && (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > 1000)) {
+    throw new Error("--batch-size must be an integer between 1 and 1000");
+  }
   return options;
 }
 
@@ -40,24 +55,69 @@ function batchPublicId(date) {
 }
 
 async function exportCandidates(options, manifest) {
-  const rows = manifest.candidates.map((candidate) => ({
-    candidate_key: candidate.candidateKey,
-    title: candidate.title,
-    doi: candidate.doi,
-    pmid: candidate.pmid,
-    pmcid: candidate.pmcid,
-    publication_year: candidate.publicationYear,
-    screening_hint: candidate.screeningHint,
-    sources: [...new Set(candidate.sources.map((source) => source.source))].join("|"),
-    decision: "",
-    reason: "",
-    reviewer: "",
-  }));
+  const screeningHint = options.screeningHint ?? "all";
+  const rows = buildCandidateReviewRows(manifest.candidates, {
+    screeningHint,
+    prioritized: options.batchSize !== undefined,
+  });
+  const quality = assertReviewRowsReady(rows);
   const outputDir = path.resolve(projectRoot, options.outputDir);
   await mkdir(outputDir, { recursive: true });
-  const outputPath = path.join(outputDir, `${manifest.run.publicId}.candidate-review.csv`);
-  await writeFile(outputPath, encodeCsv(rows, columns), "utf8");
-  process.stdout.write(`${JSON.stringify({ candidates: rows.length, csv: path.relative(projectRoot, outputPath) }, null, 2)}\n`);
+  if (options.batchSize === undefined) {
+    const suffix = screeningHint === "all" ? "" : `.${screeningHint}`;
+    const outputPath = path.join(outputDir, `${manifest.run.publicId}.candidate-review${suffix}.csv`);
+    await writeFile(outputPath, encodeCsv(rows, candidateReviewColumns), "utf8");
+    process.stdout.write(`${JSON.stringify({
+      candidates: rows.length,
+      screeningHint,
+      csv: path.relative(projectRoot, outputPath),
+    }, null, 2)}\n`);
+    return;
+  }
+
+  const baseName = `${manifest.run.publicId}.candidate-review.${screeningHint}`;
+  const batches = chunkReviewRows(rows, options.batchSize);
+  const batchFiles = [];
+  for (const [index, batchRows] of batches.entries()) {
+    const batchNumber = index + 1;
+    const file = `${baseName}.batch-${String(batchNumber).padStart(3, "0")}.csv`;
+    const csv = encodeCsv(batchRows, candidateReviewColumns);
+    await writeFile(path.join(outputDir, file), csv, "utf8");
+    batchFiles.push({
+      batchNumber,
+      file,
+      rowCount: batchRows.length,
+      sha256: sha256(csv),
+      firstCandidateKey: batchRows[0]?.candidate_key ?? null,
+      lastCandidateKey: batchRows.at(-1)?.candidate_key ?? null,
+    });
+  }
+  const index = {
+    schemaVersion: "1.0.0",
+    discoveryRunPublicId: manifest.run.publicId,
+    generatedAt: new Date().toISOString(),
+    selection: { screeningHint, candidateCount: rows.length },
+    ordering: [
+      "source_count descending",
+      "identifier_count descending",
+      "publication_year descending (missing last)",
+      "candidate_key ascending",
+    ],
+    batchSize: options.batchSize,
+    batchCount: batches.length,
+    quality,
+    batches: batchFiles,
+    authority: "Screening hints and ordering are triage aids only; a human reviewer must enter every decision, reason, and reviewer identifier.",
+  };
+  const indexPath = path.join(outputDir, `${baseName}.index.json`);
+  await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+  process.stdout.write(`${JSON.stringify({
+    candidates: rows.length,
+    screeningHint,
+    batchSize: options.batchSize,
+    batches: batches.length,
+    index: path.relative(projectRoot, indexPath),
+  }, null, 2)}\n`);
 }
 
 function validateDecisions(rows, manifest) {
@@ -65,16 +125,20 @@ function validateDecisions(rows, manifest) {
   const seen = new Set();
   const selected = [];
   for (const row of rows) {
-    if (!row.decision.trim()) continue;
+    for (const column of ["candidate_key", "decision", "reason", "reviewer"]) {
+      if (!(column in row)) throw new Error(`CSV is missing required column: ${column}`);
+    }
+    const decision = row.decision.trim();
+    if (!decision) continue;
     if (!candidates.has(row.candidate_key)) throw new Error(`Unknown candidate_key: ${row.candidate_key}`);
     if (seen.has(row.candidate_key)) throw new Error(`Duplicate candidate decision: ${row.candidate_key}`);
-    if (!decisions.has(row.decision)) throw new Error(`Invalid decision for ${row.candidate_key}`);
+    if (!decisions.has(decision)) throw new Error(`Invalid decision for ${row.candidate_key}`);
     if (!row.reason.trim() || !row.reviewer.trim()) throw new Error(`Reason and reviewer are required for ${row.candidate_key}`);
     if (row.reason.length > 2000 || row.reviewer.length > 200) throw new Error(`Review text is too long for ${row.candidate_key}`);
     seen.add(row.candidate_key);
     selected.push({
       candidateKey: row.candidate_key,
-      decision: row.decision,
+      decision,
       reason: row.reason.trim(),
       reviewer: row.reviewer.trim(),
     });

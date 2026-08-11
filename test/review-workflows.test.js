@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateCandidateReviewSql } from "../scripts/review/candidate-sql.mjs";
+import {
+  assertReviewRowsReady,
+  buildCandidateReviewRows,
+  chunkReviewRows,
+  summarizeReviewRows,
+} from "../scripts/review/candidate-batches.mjs";
 import { encodeCsv, parseCsv } from "../scripts/review/csv.mjs";
 import { generateFieldReviewSql } from "../scripts/review/field-sql.mjs";
 
@@ -8,6 +14,59 @@ test("review CSV round-trips commas, quotes, and line breaks", () => {
   const columns = ["candidate_key", "reason"];
   const rows = [{ candidate_key: "doi:10.1/test", reason: "Checked, with \"source\"\nline two" }];
   assert.deepEqual(parseCsv(encodeCsv(rows, columns)), rows);
+});
+
+test("candidate review batches filter and prioritize deterministically without making decisions", () => {
+  const candidates = [
+    {
+      candidateKey: "pmid:2",
+      title: "Single source",
+      doi: null,
+      pmid: "2",
+      pmcid: null,
+      publicationYear: 2026,
+      screeningHint: "likely_biomedical",
+      sources: [{ source: "pubmed", sourceRecordUrl: "https://example.test/2" }],
+    },
+    {
+      candidateKey: "doi:10.1/older",
+      title: "Multi source older",
+      doi: "10.1/older",
+      pmid: "1",
+      pmcid: null,
+      publicationYear: 2020,
+      screeningHint: "likely_biomedical",
+      sourceRecordUrl: "https://example.test/1",
+      sources: [
+        { source: "pubmed", sourceRecordUrl: "https://example.test/1" },
+        { source: "crossref", sourceRecordUrl: "https://example.test/crossref/1" },
+      ],
+    },
+    {
+      candidateKey: "doi:10.1/excluded",
+      title: "Different hint",
+      doi: "10.1/excluded",
+      publicationYear: 2025,
+      screeningHint: "needs_review",
+      sources: [{ source: "crossref", sourceRecordUrl: "not-a-url" }],
+    },
+  ];
+  const rows = buildCandidateReviewRows(candidates, { screeningHint: "likely_biomedical" });
+  assert.deepEqual(rows.map((row) => row.candidate_key), ["doi:10.1/older", "pmid:2"]);
+  assert.ok(rows.every((row) => row.decision === "" && row.reason === "" && row.reviewer === ""));
+  assert.deepEqual(chunkReviewRows(rows, 1).map((batch) => batch.length), [1, 1]);
+
+  const quality = summarizeReviewRows(rows);
+  assert.equal(quality.candidateCount, 2);
+  assert.equal(quality.uniqueCandidateKeyCount, 2);
+  assert.equal(quality.sourceCoverage.multipleSources.count, 1);
+  assert.equal(quality.sourceCoverage.invalidSourceRecordUrlCount, 0);
+  assert.equal(quality.blankDecisionCount, 2);
+  assert.deepEqual(assertReviewRowsReady(rows), quality);
+  assert.throws(
+    () => assertReviewRowsReady([{ ...rows[0], source_urls: "not-a-url" }]),
+    /invalid source record URLs/u,
+  );
 });
 
 test("candidate review SQL records immutable decisions without public promotion by default", () => {

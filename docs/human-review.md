@@ -12,6 +12,14 @@ Discovery manifestからreview CSVを作ります。
 npm run review:candidates -- export --manifest=.generated/discovery/DISC-....json
 ```
 
+全件CSVとの互換性を保ったまま、screening hintで絞り込み、監査可能な固定順序で小分けにもできます。たとえば`likely_biomedical`候補を100件ずつに分ける場合は次のとおりです。
+
+```powershell
+npm run review:candidates -- export --manifest=.generated/discovery/DISC-....json --screening-hint=likely_biomedical --batch-size=100
+```
+
+出力index JSONには対象件数、粒度、識別子充足率、source coverage、各CSVのSHA-256を記録します。batch内の順序はsource数、DOI/PMID/PMCIDの充足数、出版年、`candidate_key`で決定論的に並べます。これは確認しやすい順へのtriageであり、採否や`human_verified`を自動判定するものではありません。
+
 reviewerは各行に次を入力します。
 
 - `decision`: `include`、`exclude`、`duplicate`、`needs_review`
