@@ -16,7 +16,9 @@
       <p class="eyebrow">Private · Human review</p>
       <h1>Candidate Review</h1>
     </div>
-    <span id="save-status" class="save-status" role="status" aria-live="polite">接続中</span>
+    <button id="options-button" type="button" class="header-icon-button" aria-label="オプション設定を開く" aria-haspopup="dialog" hidden>
+      <span aria-hidden="true">&#9881;</span>
+    </button>
   </header>
 
   <main>
@@ -35,25 +37,6 @@
     </section>
 
     <div id="review-app" hidden>
-      <section class="setup" aria-label="レビュー設定">
-        <label>対象キュー
-          <select id="screening-hint">
-            <option value="likely_biomedical">優先候補</option>
-            <option value="needs_review">要確認候補</option>
-            <option value="likely_non_biomedical">対象外の可能性</option>
-          </select>
-        </label>
-        <label>Reviewer identifier
-          <input id="reviewer" list="reviewer-options" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="入力または履歴から選択">
-          <datalist id="reviewer-options"></datalist>
-        </label>
-        <div class="setup-actions">
-          <button id="show-bookmarks" type="button" class="text-button">保存論文 0</button>
-          <button id="export-csv" type="button" class="text-button">CSV書き出し</button>
-          <button id="logout" type="button" class="text-button">ログアウト</button>
-        </div>
-      </section>
-
       <section class="progress-panel" aria-label="進捗">
         <div class="progress-copy">
           <strong id="progress-text">0 / 0 完了</strong>
@@ -80,6 +63,33 @@
       </section>
     </div>
   </main>
+
+  <dialog id="options-dialog" class="options-dialog" aria-labelledby="options-title">
+    <div class="dialog-card">
+      <div class="dialog-heading">
+        <h2 id="options-title">オプション設定</h2>
+        <button id="close-options" type="button" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <div class="options-fields">
+        <label>対象キュー
+          <select id="screening-hint">
+            <option value="likely_biomedical">優先候補</option>
+            <option value="needs_review">要確認候補</option>
+            <option value="likely_non_biomedical">対象外の可能性</option>
+          </select>
+        </label>
+        <label>Reviewer identifier
+          <input id="reviewer" list="reviewer-options" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="入力または履歴から選択">
+          <datalist id="reviewer-options"></datalist>
+        </label>
+      </div>
+      <div class="options-actions">
+        <button id="show-bookmarks" type="button" class="secondary">保存論文 0</button>
+        <button id="export-csv" type="button" class="secondary">CSV書き出し</button>
+        <button id="logout" type="button" class="secondary logout-button">ログアウト</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="exclude-dialog">
     <form method="dialog" class="dialog-card">

@@ -12,7 +12,7 @@ const state = {
 };
 
 const elements = Object.fromEntries([
-  "save-status", "login-panel", "login-form", "admin-token", "login-error",
+  "options-button", "options-dialog", "close-options", "login-panel", "login-form", "admin-token", "login-error",
   "review-app", "screening-hint", "reviewer", "reviewer-options", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
@@ -52,15 +52,17 @@ function showToast(message) {
 
 function showLogin(message = "") {
   elements["review-app"].hidden = true;
+  elements["options-button"].hidden = true;
+  if (elements["options-dialog"].open) elements["options-dialog"].close();
   elements["login-panel"].hidden = false;
   elements["login-error"].textContent = message;
   elements["login-error"].hidden = !message;
-  elements["save-status"].textContent = "ログイン待ち";
 }
 
 function showApp() {
   elements["login-panel"].hidden = true;
   elements["review-app"].hidden = false;
+  elements["options-button"].hidden = false;
 }
 
 function safeUrl(value) {
@@ -283,7 +285,6 @@ async function loadQueue({ reset = false } = {}) {
         added.push(candidate);
       }
     });
-    elements["save-status"].textContent = "保存済み";
     if (added.length) loadTitleTranslations(added);
   } finally {
     state.loading = false;
@@ -378,7 +379,6 @@ async function toggleBookmark(candidate, bookmarked) {
   try {
     await ensureBookmarks(reviewer);
     const next = typeof bookmarked === "boolean" ? bookmarked : !isBookmarked(candidate.candidateKey);
-    elements["save-status"].textContent = "保存中…";
     const result = await api("/api/review/v1/bookmarks", {
       method: "POST",
       body: JSON.stringify({ candidateKey: candidate.candidateKey, reviewer, bookmarked: next }),
@@ -390,13 +390,11 @@ async function toggleBookmark(candidate, bookmarked) {
     if (next) state.bookmarks.set(candidate.candidateKey, { ...candidate, bookmarkedAt: result.bookmarkedAt });
     else state.bookmarks.delete(candidate.candidateKey);
     state.bookmarkReviewer = reviewer;
-    elements["save-status"].textContent = "保存済み";
     updateBookmarkCount();
     renderCandidate();
     if (elements["bookmark-dialog"].open) renderBookmarks();
     showToast(next ? "論文をブックマークしました" : "ブックマークを解除しました");
   } catch (error) {
-    elements["save-status"].textContent = "保存失敗";
     showToast(error.message);
   }
 }
@@ -459,7 +457,6 @@ async function openAbstract(candidate) {
 
 async function loadReview() {
   showApp();
-  elements["save-status"].textContent = "読込中…";
   await Promise.all([loadProgress(), loadQueue({ reset: true }), loadBookmarks(), loadReviewers()]);
 }
 
@@ -479,7 +476,6 @@ async function saveDecision(decision, reason, duplicateOf) {
   }
   const candidate = currentCandidate();
   if (!candidate) return;
-  elements["save-status"].textContent = "保存中…";
   disableDecisions(true);
   try {
     const result = await api("/api/review/v1/decisions", {
@@ -491,13 +487,11 @@ async function saveDecision(decision, reason, duplicateOf) {
     elements["revise-last"].hidden = false;
     adjustProgress(result.previousStatus, decision);
     rememberReviewer(reviewer, result.reviewedAt);
-    elements["save-status"].textContent = "保存済み";
     showToast("判定を保存しました");
     renderCandidate();
     window.scrollTo({ top: 0, behavior: "auto" });
     if (state.queue.length <= 5) await loadQueue();
   } catch (error) {
-    elements["save-status"].textContent = "保存失敗";
     showToast(error.message);
     disableDecisions(false);
   }
@@ -545,7 +539,6 @@ async function loadDuplicates(query = "") {
 elements["login-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   elements["login-error"].hidden = true;
-  elements["save-status"].textContent = "認証中…";
   try {
     await api("/api/review/v1/session", {
       method: "POST",
@@ -558,6 +551,8 @@ elements["login-form"].addEventListener("submit", async (event) => {
   }
 });
 
+elements["options-button"].addEventListener("click", () => elements["options-dialog"].showModal());
+elements["close-options"].addEventListener("click", () => elements["options-dialog"].close());
 elements.logout.addEventListener("click", async () => {
   await api("/api/review/v1/session", { method: "DELETE" }).catch(() => {});
   showLogin();
@@ -574,6 +569,7 @@ elements["show-bookmarks"].addEventListener("click", async () => {
     elements.reviewer.focus();
     return;
   }
+  elements["options-dialog"].close();
   elements["bookmark-dialog"].showModal();
   elements["bookmark-results"].replaceChildren(text("p", "保存論文を読み込んでいます…", "abstract-status"));
   try {
