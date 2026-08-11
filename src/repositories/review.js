@@ -87,6 +87,64 @@ export function createReviewRepository(db) {
         WHERE candidate_key = ?`).bind(candidateKey).first();
     },
 
+    async getTitleTranslationRows(candidateKeys) {
+      if (!candidateKeys.length) return [];
+      const placeholders = candidateKeys.map(() => "?").join(", ");
+      const result = await db.prepare(`SELECT
+          c.id AS internal_id, c.candidate_key, c.title,
+          t.source_sha256 AS translation_source_sha256,
+          t.translated_text,
+          t.provider AS translation_provider,
+          t.provider_model AS translation_provider_model
+        FROM study_candidates c
+        LEFT JOIN candidate_translations t
+          ON t.candidate_id = c.id
+          AND t.field_name = 'title'
+          AND t.target_language = 'ja'
+        WHERE c.candidate_key IN (${placeholders})
+        ORDER BY c.id`).bind(...candidateKeys).all();
+      return result.results ?? [];
+    },
+
+    async saveTitleTranslations(records) {
+      if (!records.length) return [];
+      return db.batch(records.map((record) => db.prepare(`INSERT INTO candidate_translations (
+          candidate_id, field_name, target_language, source_sha256,
+          translated_text, provider, provider_model, glossary_version, translated_at
+        ) VALUES (?, 'title', 'ja', ?, ?, 'deepl', ?, ?, ?)
+        ON CONFLICT(candidate_id, field_name, target_language) DO UPDATE SET
+          source_sha256 = excluded.source_sha256,
+          translated_text = excluded.translated_text,
+          provider = excluded.provider,
+          provider_model = excluded.provider_model,
+          glossary_version = excluded.glossary_version,
+          translated_at = excluded.translated_at`)
+        .bind(
+          record.candidateId,
+          record.sourceSha256,
+          record.translatedText,
+          record.providerModel,
+          record.glossaryVersion,
+          record.translatedAt,
+        )));
+    },
+
+    async getTranslationSetting(settingKey) {
+      const row = await db.prepare(`SELECT setting_value
+        FROM translation_settings
+        WHERE setting_key = ?`).bind(settingKey).first();
+      return row?.setting_value ?? null;
+    },
+
+    async putTranslationSetting(settingKey, settingValue, updatedAt) {
+      return db.prepare(`INSERT INTO translation_settings (setting_key, setting_value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(setting_key) DO UPDATE SET
+          setting_value = excluded.setting_value,
+          updated_at = excluded.updated_at`)
+        .bind(settingKey, settingValue, updatedAt).run();
+    },
+
     async getDuplicateSuggestions(candidateKey) {
       const result = await db.prepare(`SELECT ${queueColumns}
         FROM study_candidates

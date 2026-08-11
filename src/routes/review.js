@@ -7,6 +7,8 @@ import {
   verifyReviewSession,
 } from "../review/auth.js";
 import { createReviewRepository, reviewHints } from "../repositories/review.js";
+import { createReviewTranslationService, ReviewTranslationError } from "../services/review-translations.js";
+import { createDeepLClient } from "../translation/deepl.js";
 import { errorResponse, jsonResponse } from "../utils/responses.js";
 
 const decisions = new Set(["include", "exclude", "duplicate", "needs_review"]);
@@ -227,6 +229,60 @@ async function saveDecision(request, repository, options) {
   });
 }
 
+function translationService(env, repository, options, now) {
+  return options.translationService ?? createReviewTranslationService({
+    repository,
+    deepLClient: createDeepLClient({
+      apiKey: env.DEEPL_API_KEY,
+      fetchImpl: options.fetchImpl,
+    }),
+    fetchImpl: options.fetchImpl,
+    now,
+  });
+}
+
+function translationErrorResponse(request, error) {
+  if (error instanceof ReviewTranslationError) {
+    return securedError(request, error.status, error.code, error.message);
+  }
+  throw error;
+}
+
+async function translateTitles(request, service) {
+  if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
+  let candidateKeys;
+  try {
+    const body = await jsonBody(request);
+    if (!Array.isArray(body.candidateKeys) || !body.candidateKeys.length || body.candidateKeys.length > 20) {
+      throw new RangeError("candidateKeys must contain 1–20 items");
+    }
+    candidateKeys = body.candidateKeys.map((key) => cleanText(key, "candidateKey", 240));
+    if (new Set(candidateKeys).size !== candidateKeys.length) throw new RangeError("candidateKeys must be unique");
+  } catch (error) {
+    return securedError(request, 400, "invalid_request", error.message);
+  }
+  try {
+    return securedJson(request, { data: await service.translateTitles(candidateKeys) });
+  } catch (error) {
+    return translationErrorResponse(request, error);
+  }
+}
+
+async function translateAbstract(request, service) {
+  if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
+  let candidateKey;
+  try {
+    candidateKey = cleanText((await jsonBody(request)).candidateKey, "candidateKey", 240);
+  } catch (error) {
+    return securedError(request, 400, "invalid_request", error.message);
+  }
+  try {
+    return securedJson(request, { data: await service.translateAbstract(candidateKey) });
+  } catch (error) {
+    return translationErrorResponse(request, error);
+  }
+}
+
 export async function handleReview(request, env, options = {}) {
   const secret = env.REVIEW_ADMIN_TOKEN;
   if (!validReviewSecret(secret)) {
@@ -271,6 +327,12 @@ export async function handleReview(request, env, options = {}) {
   if (url.pathname === "/api/review/v1/export" && request.method === "GET") {
     const hint = screeningHint(url.searchParams.get("screeningHint"));
     return csvResponse(reviewCsv(await repository.getCompletedReviews(hint)), hint);
+  }
+  if (url.pathname === "/api/review/v1/translations/titles" && request.method === "POST") {
+    return translateTitles(request, translationService(env, repository, options, now));
+  }
+  if (url.pathname === "/api/review/v1/translations/abstract" && request.method === "POST") {
+    return translateAbstract(request, translationService(env, repository, options, now));
   }
   if (url.pathname === "/api/review/v1/duplicates" && request.method === "GET") {
     const candidateKey = url.searchParams.get("candidateKey")?.trim();

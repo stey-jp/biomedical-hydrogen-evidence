@@ -4,6 +4,8 @@ const state = {
   progress: null,
   lastSaved: null,
   duplicateTarget: null,
+  translationDisabled: false,
+  abstracts: new Map(),
 };
 
 const elements = Object.fromEntries([
@@ -14,6 +16,7 @@ const elements = Object.fromEntries([
   "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
   "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog",
   "reason-form", "reason-text", "toast",
+  "abstract-dialog", "abstract-content", "close-abstract",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const excludeReasons = {
@@ -31,6 +34,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(body.error?.message ?? `Request failed: ${response.status}`);
     error.status = response.status;
+    error.code = body.error?.code;
     throw error;
   }
   return body;
@@ -89,6 +93,32 @@ function disableDecisions(disabled) {
   document.querySelectorAll(".decision").forEach((button) => { button.disabled = disabled; });
 }
 
+function titleTranslation(candidate) {
+  const container = document.createElement("section");
+  container.className = "title-translation";
+  const provider = candidate.translationProvider === "source" ? "原文" : "DeepL";
+  container.append(text("span", `日本語参考訳 · ${provider}`, "translation-label"));
+  if (candidate.translatedTitle) {
+    const translation = text("p", candidate.translatedTitle);
+    translation.lang = "ja";
+    container.append(translation);
+  } else if (candidate.translationStatus === "loading") {
+    container.append(text("p", "翻訳を読み込んでいます…", "translation-pending"));
+  } else {
+    const message = candidate.translationError === "translation_disabled" || state.translationDisabled
+      ? "DeepL APIキーの設定後に日本語訳を表示します。"
+      : "日本語訳を取得できませんでした。";
+    container.append(text("p", message, "translation-pending"));
+    if (!state.translationDisabled) {
+      const retry = text("button", "再試行", "translation-retry");
+      retry.type = "button";
+      retry.addEventListener("click", () => loadTitleTranslations([candidate]));
+      container.append(retry);
+    }
+  }
+  return container;
+}
+
 function renderCandidate() {
   const candidate = currentCandidate();
   if (!candidate) {
@@ -102,7 +132,11 @@ function renderCandidate() {
 
   const fragment = document.createDocumentFragment();
   fragment.append(text("p", candidate.screeningHint.replaceAll("_", " "), "candidate-number"));
-  fragment.append(text("h2", candidate.title));
+  fragment.append(text("p", "英語原文", "translation-label"));
+  const heading = text("h2", candidate.title);
+  heading.lang = candidate.language ?? "en";
+  fragment.append(heading);
+  fragment.append(titleTranslation(candidate));
   const metadata = [candidate.publicationYear, candidate.journal].filter(Boolean).join(" · ");
   fragment.append(text("p", metadata || "書誌metadata未収録", "metadata"));
   if (candidate.authors.length) fragment.append(text("p", candidate.authors.join(" · "), "authors"));
@@ -122,6 +156,12 @@ function renderCandidate() {
   if (candidate.pmcid) links.append(sourceLink("PMC", `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(candidate.pmcid)}/`));
   const sourceUrl = safeUrl(candidate.sourceUrl);
   if (sourceUrl) links.append(sourceLink("原資料", sourceUrl));
+  if (candidate.pmid || candidate.pmcid || candidate.doi) {
+    const abstractButton = text("button", "要旨対訳", "source-link abstract-button");
+    abstractButton.type = "button";
+    abstractButton.addEventListener("click", () => openAbstract(candidate));
+    links.append(abstractButton);
+  }
   fragment.append(links);
   fragment.append(text("p", "判断するのは収録scopeです。研究結果がpositiveかnegativeかでは決めません。", "review-note"));
   elements.candidate.replaceChildren(fragment);
@@ -147,6 +187,34 @@ async function loadProgress() {
   renderProgress();
 }
 
+async function loadTitleTranslations(candidates) {
+  const requested = candidates.filter((candidate) => !candidate.translatedTitle);
+  if (!requested.length) return;
+  requested.forEach((candidate) => { candidate.translationStatus = "loading"; });
+  renderCandidate();
+  try {
+    const result = await api("/api/review/v1/translations/titles", {
+      method: "POST",
+      body: JSON.stringify({ candidateKeys: requested.map((candidate) => candidate.candidateKey) }),
+    });
+    const translations = new Map(result.data.map((item) => [item.candidateKey, item]));
+    if (result.data.some((item) => item.errorCode === "translation_disabled")) {
+      state.translationDisabled = true;
+    }
+    requested.forEach((candidate) => {
+      const translation = translations.get(candidate.candidateKey);
+      candidate.translatedTitle = translation?.translatedText ?? "";
+      candidate.translationProvider = translation?.provider;
+      candidate.translationError = translation?.errorCode;
+      candidate.translationStatus = candidate.translatedTitle ? "ready" : "error";
+    });
+  } catch (error) {
+    if (error.code === "translation_disabled") state.translationDisabled = true;
+    requested.forEach((candidate) => { candidate.translationStatus = "error"; });
+  }
+  renderCandidate();
+}
+
 async function loadQueue({ reset = false } = {}) {
   if (state.loading) return;
   state.loading = true;
@@ -156,13 +224,75 @@ async function loadQueue({ reset = false } = {}) {
     const hint = elements["screening-hint"].value;
     const result = await api(`/api/review/v1/queue?screeningHint=${encodeURIComponent(hint)}&limit=20`);
     const existing = new Set(state.queue.map((candidate) => candidate.candidateKey));
+    const added = [];
     result.data.forEach((candidate) => {
-      if (!existing.has(candidate.candidateKey)) state.queue.push(candidate);
+      if (!existing.has(candidate.candidateKey)) {
+        candidate.translationStatus = "loading";
+        state.queue.push(candidate);
+        added.push(candidate);
+      }
     });
     elements["save-status"].textContent = "保存済み";
+    if (added.length) loadTitleTranslations(added);
   } finally {
     state.loading = false;
     renderCandidate();
+  }
+}
+
+function renderAbstract(abstract) {
+  const fragment = document.createDocumentFragment();
+  const meta = document.createElement("div");
+  meta.className = "abstract-meta";
+  meta.append(text("span", `${abstract.source} · ${abstract.provider}`));
+  const sourceUrl = safeUrl(abstract.sourceUrl);
+  if (sourceUrl) meta.append(sourceLink("原資料を開く", sourceUrl));
+  fragment.append(meta);
+  abstract.sentences.forEach((sentence, index) => {
+    const pair = document.createElement("section");
+    pair.className = "abstract-pair";
+    const source = document.createElement("div");
+    source.className = "abstract-side";
+    source.append(text("span", `原文 ${index + 1}`, "translation-label"));
+    const sourceText = text("p", sentence.source);
+    sourceText.lang = "en";
+    source.append(sourceText);
+    const japanese = document.createElement("div");
+    japanese.className = "abstract-side abstract-ja";
+    japanese.append(text("span", `日本語参考訳 ${index + 1}`, "translation-label"));
+    const translatedText = text("p", sentence.translation);
+    translatedText.lang = "ja";
+    japanese.append(translatedText);
+    pair.append(source, japanese);
+    fragment.append(pair);
+  });
+  fragment.append(text("p", "要旨はこの画面で一時表示するだけで、D1には保存しません。原資料の著作権・ライセンスを確認してください。", "abstract-notice"));
+  elements["abstract-content"].replaceChildren(fragment);
+}
+
+async function openAbstract(candidate) {
+  elements["abstract-dialog"].showModal();
+  const cached = state.abstracts.get(candidate.candidateKey);
+  if (cached) {
+    renderAbstract(cached);
+    return;
+  }
+  elements["abstract-content"].replaceChildren(text("p", "要旨を取得して翻訳しています…", "abstract-status"));
+  try {
+    const result = await api("/api/review/v1/translations/abstract", {
+      method: "POST",
+      body: JSON.stringify({ candidateKey: candidate.candidateKey }),
+    });
+    state.abstracts.set(candidate.candidateKey, result.data);
+    renderAbstract(result.data);
+  } catch (error) {
+    if (error.code === "translation_disabled") state.translationDisabled = true;
+    const message = error.code === "translation_disabled"
+      ? "DeepL APIキーの設定後に要旨対訳を表示します。"
+      : error.code === "abstract_unavailable"
+        ? "Europe PMCから利用可能な要旨を取得できませんでした。原資料を確認してください。"
+        : "要旨対訳を取得できませんでした。時間をおいて再試行してください。";
+    elements["abstract-content"].replaceChildren(text("p", message, "abstract-status"));
   }
 }
 
@@ -274,6 +404,7 @@ elements["export-csv"].addEventListener("click", () => {
   const hint = encodeURIComponent(elements["screening-hint"].value);
   location.assign(`/api/review/v1/export?screeningHint=${hint}`);
 });
+elements["close-abstract"].addEventListener("click", () => elements["abstract-dialog"].close());
 
 elements.reviewer.value = localStorage.getItem("candidate-reviewer") ?? "";
 const savedHint = localStorage.getItem("candidate-review-hint");

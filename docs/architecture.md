@@ -13,7 +13,8 @@ Cloudflare Worker
 ├─ /api/v1/* ─┐
 ├─ /mcp ──────┼─ Study service ─ Repository ─ D1
 ├─ /healthz ──┘
-└─ /api/review/v1/* ── Review repository ── D1 audit events
+└─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + title translation cache
+                     └─ DeepL API Free + Europe PMC abstract lookup
 
 iOS / Android ── HTTPS GET ──► first-party REST API
 ```
@@ -35,7 +36,7 @@ generated review manifest + D1 import SQL
 study_candidates (not public search) ── human screening ──► studies
 ```
 
-Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。
+Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳routeも同じ認証・same-origin・rate limit境界内に置き、DeepL Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、Europe PMC要旨と要旨訳は永続化しません。
 
 ```text
 authorized local source bundle
@@ -93,4 +94,4 @@ Machine consensusは`machine_extracted`、`machine_checked`、`needs_human_revie
 
 ## Security
 
-一般公開APIはread-only、same-origin Webと公式native clients向けです。非公開review routeは別Rate Limiting binding、32文字以上のCloudflare Secret、30日で失効するHMAC署名済み`HttpOnly` / `SameSite=Strict` Cookie、same-origin write検査で保護します。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。candidate screeningは公開studyへの昇格を行わず、candidate snapshot hashと変更前statusをimmutable eventへ記録します。native clientsもHTTPS GETだけを使用します。Provider secretはmanaged local processの環境変数、Worker secretはCloudflare Secretsまたはlocal `.dev.vars`を使い、Gitへcommitしません。
+一般公開APIはread-only、same-origin Webと公式native clients向けです。非公開review routeは別Rate Limiting binding、32文字以上のCloudflare Secret、30日で失効するHMAC署名済み`HttpOnly` / `SameSite=Strict` Cookie、same-origin write検査で保護します。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。candidate screeningは公開studyへの昇格を行わず、candidate snapshot hashと変更前statusをimmutable eventへ記録します。native clientsもHTTPS GETだけを使用します。Provider secretと`DEEPL_API_KEY`はCloudflare Secretsまたはlocal `.dev.vars`を使い、Git・D1・ブラウザへ保存しません。

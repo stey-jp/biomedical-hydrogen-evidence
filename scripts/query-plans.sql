@@ -26,3 +26,5 @@ EXPLAIN QUERY PLAN SELECT id FROM evidence_checks WHERE study_id = 1 AND status 
 EXPLAIN QUERY PLAN SELECT id FROM human_review_batches WHERE public_id = 'REV-FIXTURE-0001';
 EXPLAIN QUERY PLAN SELECT id FROM candidate_review_events WHERE candidate_id = 1 ORDER BY reviewed_at DESC, id DESC;
 EXPLAIN QUERY PLAN SELECT id FROM field_verification_events WHERE study_id = 1 ORDER BY reviewed_at DESC, id DESC;
+EXPLAIN QUERY PLAN SELECT translated_text FROM candidate_translations WHERE candidate_id = 1 AND field_name = 'title' AND target_language = 'ja';
+EXPLAIN QUERY PLAN SELECT setting_value FROM translation_settings WHERE setting_key = 'deepl-glossary:biomedical-hydrogen-en-ja-v1';

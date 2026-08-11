@@ -12,6 +12,7 @@ import {
   createReviewRepository,
 } from "../src/repositories/review.js";
 import { handleReview } from "../src/routes/review.js";
+import { ReviewTranslationError } from "../src/services/review-translations.js";
 
 const secret = "test-review-secret-that-is-longer-than-32-characters";
 const now = Date.parse("2026-08-11T03:00:00.000Z");
@@ -229,4 +230,71 @@ test("review CSV export is authenticated, no-store, and neutralizes spreadsheet 
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(response.headers.get("content-disposition"), /candidate-review\.likely_biomedical\.csv/u);
   assert.match(csv, /"'=unsafe spreadsheet formula"/u);
+});
+
+test("review translation API is authenticated, same-origin, and returns aligned data", async () => {
+  const { cookie } = await loginCookie();
+  const calls = [];
+  const translationService = {
+    async translateTitles(candidateKeys) {
+      calls.push(["titles", candidateKeys]);
+      return candidateKeys.map((candidateKey) => ({
+        candidateKey,
+        translatedText: "分子状水素候補",
+        cached: false,
+        provider: "deepl",
+      }));
+    },
+    async translateAbstract(candidateKey) {
+      calls.push(["abstract", candidateKey]);
+      return {
+        source: "Europe PMC",
+        provider: "DeepL API Free",
+        sentences: [{ source: "Source.", translation: "原文。" }],
+      };
+    },
+  };
+  const headers = { cookie, origin: "https://example.test", "content-type": "application/json" };
+  const titles = await handleReview(request("/api/review/v1/translations/titles", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ candidateKeys: [candidate.candidate_key] }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
+  assert.equal(titles.status, 200);
+  assert.equal((await titles.json()).data[0].translatedText, "分子状水素候補");
+
+  const abstract = await handleReview(request("/api/review/v1/translations/abstract", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ candidateKey: candidate.candidate_key }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
+  assert.equal(abstract.status, 200);
+  assert.equal((await abstract.json()).data.sentences[0].source, "Source.");
+  assert.deepEqual(calls, [
+    ["titles", [candidate.candidate_key]],
+    ["abstract", candidate.candidate_key],
+  ]);
+
+  const crossOrigin = await handleReview(request("/api/review/v1/translations/titles", {
+    method: "POST",
+    headers: { ...headers, origin: "https://evil.example" },
+    body: JSON.stringify({ candidateKeys: [candidate.candidate_key] }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
+  assert.equal(crossOrigin.status, 403);
+});
+
+test("review translation API returns a stable code when DeepL is unavailable", async () => {
+  const { cookie } = await loginCookie();
+  const translationService = {
+    async translateTitles() {
+      throw new ReviewTranslationError("DeepL API key is not configured.", 503, "translation_disabled");
+    },
+  };
+  const response = await handleReview(request("/api/review/v1/translations/titles", {
+    method: "POST",
+    headers: { cookie, origin: "https://example.test", "content-type": "application/json" },
+    body: JSON.stringify({ candidateKeys: [candidate.candidate_key] }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "translation_disabled");
 });

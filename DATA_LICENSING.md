@@ -18,7 +18,7 @@ Phase 2のPubMed、Europe PMC、Crossref候補はsource record URLとsource-spec
 
 ## Abstracts
 
-Abstractは無条件に自由再配布可能とは仮定しません。sourceのlicenseが明確でないabstract全文は保存・再配布せず、必要な場合も検証目的の短いsnippetとlocatorを優先します。
+Abstractは無条件に自由再配布可能とは仮定しません。sourceのlicenseが明確でないabstract全文は保存・再配布せず、必要な場合も検証目的の短いsnippetとlocatorを優先します。非公開review画面の要旨対訳はEurope PMCから要求時だけ取得し、要旨原文・DeepL訳ともD1やGitへ保存せずブラウザタブのmemoryへ一時保持します。画面表示は再配布許諾を意味せず、原資料のlicense確認を必要とします。
 
 ## Publisher content
 
