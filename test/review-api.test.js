@@ -118,6 +118,45 @@ test("review repository records the audit batch, immutable event, and candidate 
   assert.ok(prepared.every((statement) => !statement.sql.includes(candidate.candidate_key)));
 });
 
+test("review repository scopes bookmarks by reviewer with bound statements", async () => {
+  const prepared = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...bindings) {
+          prepared.push({ sql, bindings });
+          return {
+            async all() { return { results: [] }; },
+            async run() { return { success: true }; },
+          };
+        },
+      };
+    },
+  };
+  const repository = createReviewRepository(db);
+  await repository.getBookmarks("reviewer-1");
+  await repository.getBookmarksForExport("reviewer-1");
+  await repository.setBookmark({
+    candidateKey: candidate.candidate_key,
+    reviewer: "reviewer-1",
+    bookmarked: true,
+    createdAt: "2026-08-11T05:00:00.000Z",
+  });
+  await repository.setBookmark({
+    candidateKey: candidate.candidate_key,
+    reviewer: "reviewer-1",
+    bookmarked: false,
+    createdAt: "2026-08-11T05:00:00.000Z",
+  });
+  assert.equal(prepared.length, 4);
+  assert.match(prepared[0].sql, /WHERE b\.reviewer = \?/u);
+  assert.deepEqual(prepared[0].bindings, ["reviewer-1", 500]);
+  assert.match(prepared[2].sql, /ON CONFLICT\(reviewer, candidate_id\)/u);
+  assert.deepEqual(prepared[2].bindings, ["reviewer-1", "2026-08-11T05:00:00.000Z", candidate.candidate_key]);
+  assert.match(prepared[3].sql, /DELETE FROM candidate_review_bookmarks/u);
+  assert.ok(prepared.every((statement) => !statement.sql.includes("reviewer-1")));
+});
+
 test("review API authenticates, reads a bounded queue, and saves an audited decision", async () => {
   const recorded = [];
   const repository = {
@@ -297,4 +336,83 @@ test("review translation API returns a stable code when DeepL is unavailable", a
   }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error.code, "translation_disabled");
+});
+
+test("review bookmark API saves, lists, and exports reviewer-scoped candidates", async () => {
+  const { cookie } = await loginCookie();
+  const saved = [];
+  const bookmarkedAt = "2026-08-11T05:00:00.000Z";
+  const repository = {
+    async getCandidate(key) { return key === candidate.candidate_key ? candidate : null; },
+    async getBookmarks(reviewer) {
+      assert.equal(reviewer, "reviewer-1");
+      return [{ ...candidate, bookmarked_at: bookmarkedAt }];
+    },
+    async getBookmarksForExport(reviewer) {
+      assert.equal(reviewer, "reviewer-1");
+      return [{
+        bookmarked_at: bookmarkedAt,
+        reviewer,
+        candidate_key: candidate.candidate_key,
+        review_status: "pending",
+        screening_hint: candidate.screening_hint,
+        title: "=unsafe title",
+        publication_year: candidate.publication_year,
+        journal: candidate.journal,
+        doi: candidate.doi,
+        pmid: candidate.pmid,
+        pmcid: candidate.pmcid,
+        source_url: candidate.source_url,
+      }];
+    },
+    async setBookmark(value) { saved.push(value); },
+  };
+  const list = await handleReview(request("/api/review/v1/bookmarks?reviewer=reviewer-1", {
+    headers: { cookie },
+  }), { REVIEW_ADMIN_TOKEN: secret }, { repository, now: () => now });
+  const listBody = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listBody.data[0].candidateKey, candidate.candidate_key);
+  assert.equal(listBody.data[0].bookmarkedAt, bookmarkedAt);
+
+  const save = await handleReview(request("/api/review/v1/bookmarks", {
+    method: "POST",
+    headers: { cookie, origin: "https://example.test", "content-type": "application/json" },
+    body: JSON.stringify({
+      candidateKey: candidate.candidate_key,
+      reviewer: "reviewer-1",
+      bookmarked: true,
+    }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { repository, now: () => Date.parse(bookmarkedAt) });
+  assert.equal(save.status, 200);
+  assert.equal((await save.json()).bookmarked, true);
+  assert.deepEqual(saved, [{
+    candidateKey: candidate.candidate_key,
+    reviewer: "reviewer-1",
+    bookmarked: true,
+    createdAt: bookmarkedAt,
+  }]);
+
+  const exported = await handleReview(request("/api/review/v1/bookmarks/export?reviewer=reviewer-1", {
+    headers: { cookie },
+  }), { REVIEW_ADMIN_TOKEN: secret }, { repository, now: () => now });
+  const csv = await exported.text();
+  assert.equal(exported.status, 200);
+  assert.match(exported.headers.get("content-disposition"), /candidate-bookmarks\.csv/u);
+  assert.match(csv, /"'=unsafe title"/u);
+  assert.match(csv, /"bookmarked_at","reviewer","candidate_key"/u);
+});
+
+test("review bookmark writes reject cross-origin requests", async () => {
+  const { cookie } = await loginCookie();
+  const response = await handleReview(request("/api/review/v1/bookmarks", {
+    method: "POST",
+    headers: { cookie, origin: "https://evil.example", "content-type": "application/json" },
+    body: JSON.stringify({
+      candidateKey: candidate.candidate_key,
+      reviewer: "reviewer-1",
+      bookmarked: true,
+    }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { repository: {}, now: () => now });
+  assert.equal(response.status, 403);
 });

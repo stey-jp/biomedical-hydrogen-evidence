@@ -27,6 +27,7 @@ npm run deploy
 - タイトルは英語原文の直下にDeepLの日本語参考訳を表示します。EN→JA用語集を初回に自動作成し、原文SHA-256、provider model、用語集version、翻訳時刻とともにD1へcacheします。タイトル変更時はhash不一致で再翻訳します。
 - `要旨対訳`はEurope PMCから要旨を都度取得し、文単位で原文と日本語参考訳を並べます。要旨本文・要旨訳はD1へ保存せず、そのブラウザタブのmemoryだけで再利用します。利用条件にかかわらず原資料へのlinkを残します。
 - 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。DeepL訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
+- `☆ ブックマーク`はcandidateをreviewer identifierごとにD1へ保存します。`保存論文`から後日一覧表示、原資料表示、レビュー画面への再表示、解除、CSV書き出しができます。reviewerはtrim後の完全一致で分離され、同じidentifierを入力した認証済み管理者には同じ一覧が表示されます。
 
 各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。
 

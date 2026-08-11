@@ -47,6 +47,7 @@
           <input id="reviewer" maxlength="200" autocomplete="name" placeholder="例：daiki">
         </label>
         <div class="setup-actions">
+          <button id="show-bookmarks" type="button" class="text-button">保存論文 0</button>
           <button id="export-csv" type="button" class="text-button">CSV書き出し</button>
           <button id="logout" type="button" class="text-button">ログアウト</button>
         </div>
@@ -126,12 +127,24 @@
 
   <dialog id="abstract-dialog" class="abstract-dialog">
     <div class="dialog-card abstract-dialog-card">
-      <div class="dialog-heading">
+      <div class="dialog-heading dialog-heading-sticky">
         <h2>要旨の原文・日本語対訳</h2>
         <button id="close-abstract" type="button" class="icon-button" aria-label="閉じる">×</button>
       </div>
       <p class="dialog-help">日本語はDeepLによる参考訳です。判断では英語原文と原資料を優先してください。</p>
       <div id="abstract-content" class="abstract-content" aria-live="polite"></div>
+    </div>
+  </dialog>
+
+  <dialog id="bookmark-dialog" class="bookmark-dialog">
+    <div class="dialog-card bookmark-dialog-card">
+      <div class="dialog-heading dialog-heading-sticky">
+        <h2>保存した論文</h2>
+        <button id="close-bookmarks" type="button" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <p id="bookmark-summary" class="dialog-help"></p>
+      <button id="bookmark-export" type="button" class="secondary bookmark-export">ブックマークCSVを書き出す</button>
+      <div id="bookmark-results" class="bookmark-results" aria-live="polite"></div>
     </div>
   </dialog>
 

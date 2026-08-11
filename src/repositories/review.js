@@ -20,6 +20,29 @@ const queueColumns = `
   reviewed_by,
   reviewed_at`;
 
+const bookmarkedCandidateColumns = `
+  c.id AS internal_id,
+  c.candidate_key,
+  c.title,
+  c.title_normalized,
+  c.doi,
+  c.pmid,
+  c.pmcid,
+  c.publication_year,
+  c.publication_date,
+  c.journal,
+  c.publisher,
+  c.authors_json,
+  c.language,
+  c.source_url,
+  c.screening_hint,
+  c.screening_reasons_json,
+  c.review_status,
+  c.review_reason,
+  c.reviewed_by,
+  c.reviewed_at,
+  b.created_at AS bookmarked_at`;
+
 export const reviewHints = ["likely_biomedical", "needs_review", "likely_non_biomedical"];
 
 export function buildReviewQueueStatement({ screeningHint, limit }) {
@@ -85,6 +108,50 @@ export function createReviewRepository(db) {
       return db.prepare(`SELECT ${queueColumns}
         FROM study_candidates
         WHERE candidate_key = ?`).bind(candidateKey).first();
+    },
+
+    async getBookmarks(reviewer, limit = 500) {
+      const result = await db.prepare(`SELECT ${bookmarkedCandidateColumns}
+        FROM candidate_review_bookmarks b
+        JOIN study_candidates c ON c.id = b.candidate_id
+        WHERE b.reviewer = ?
+        ORDER BY b.created_at DESC, b.candidate_id DESC
+        LIMIT ?`).bind(reviewer, limit).all();
+      return result.results ?? [];
+    },
+
+    async getBookmarksForExport(reviewer) {
+      const result = await db.prepare(`SELECT
+          b.created_at AS bookmarked_at,
+          b.reviewer,
+          c.candidate_key,
+          c.review_status,
+          c.screening_hint,
+          c.title,
+          c.publication_year,
+          c.journal,
+          c.doi,
+          c.pmid,
+          c.pmcid,
+          c.source_url
+        FROM candidate_review_bookmarks b
+        JOIN study_candidates c ON c.id = b.candidate_id
+        WHERE b.reviewer = ?
+        ORDER BY b.created_at DESC, b.candidate_id DESC`).bind(reviewer).all();
+      return result.results ?? [];
+    },
+
+    async setBookmark({ candidateKey, reviewer, bookmarked, createdAt }) {
+      if (bookmarked) {
+        return db.prepare(`INSERT INTO candidate_review_bookmarks (reviewer, candidate_id, created_at)
+          SELECT ?, id, ? FROM study_candidates WHERE candidate_key = ?
+          ON CONFLICT(reviewer, candidate_id) DO UPDATE SET created_at = excluded.created_at`)
+          .bind(reviewer, createdAt, candidateKey).run();
+      }
+      return db.prepare(`DELETE FROM candidate_review_bookmarks
+        WHERE reviewer = ?
+          AND candidate_id = (SELECT id FROM study_candidates WHERE candidate_key = ?)`)
+        .bind(reviewer, candidateKey).run();
     },
 
     async getTitleTranslationRows(candidateKeys) {

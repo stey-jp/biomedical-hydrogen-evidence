@@ -13,7 +13,7 @@ Cloudflare Worker
 ├─ /api/v1/* ─┐
 ├─ /mcp ──────┼─ Study service ─ Repository ─ D1
 ├─ /healthz ──┘
-└─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + title translation cache
+└─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + reviewer bookmarks + title translation cache
                      └─ DeepL API Free + Europe PMC abstract lookup
 
 iOS / Android ── HTTPS GET ──► first-party REST API

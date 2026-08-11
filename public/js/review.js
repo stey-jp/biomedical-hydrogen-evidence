@@ -6,17 +6,20 @@ const state = {
   duplicateTarget: null,
   translationDisabled: false,
   abstracts: new Map(),
+  bookmarks: new Map(),
+  bookmarkReviewer: "",
 };
 
 const elements = Object.fromEntries([
   "save-status", "login-panel", "login-form", "admin-token", "login-error",
-  "review-app", "screening-hint", "reviewer", "logout", "export-csv", "progress-text",
+  "review-app", "screening-hint", "reviewer", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
   "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog",
   "reason-form", "reason-text", "toast",
   "abstract-dialog", "abstract-content", "close-abstract",
+  "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "close-bookmarks",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const excludeReasons = {
@@ -87,6 +90,19 @@ function sourceLink(label, url) {
 
 function currentCandidate() {
   return state.queue[0];
+}
+
+function reviewerValue() {
+  return elements.reviewer.value.trim();
+}
+
+function isBookmarked(candidateKey) {
+  return state.bookmarkReviewer === reviewerValue() && state.bookmarks.has(candidateKey);
+}
+
+function updateBookmarkCount() {
+  const count = state.bookmarkReviewer === reviewerValue() ? state.bookmarks.size : 0;
+  elements["show-bookmarks"].textContent = `保存論文 ${count}`;
 }
 
 function disableDecisions(disabled) {
@@ -162,6 +178,11 @@ function renderCandidate() {
     abstractButton.addEventListener("click", () => openAbstract(candidate));
     links.append(abstractButton);
   }
+  const bookmarkButton = text("button", isBookmarked(candidate.candidateKey) ? "★ 保存済み" : "☆ ブックマーク", "source-link bookmark-button");
+  bookmarkButton.type = "button";
+  bookmarkButton.setAttribute("aria-pressed", String(isBookmarked(candidate.candidateKey)));
+  bookmarkButton.addEventListener("click", () => toggleBookmark(candidate));
+  links.append(bookmarkButton);
   fragment.append(links);
   fragment.append(text("p", "判断するのは収録scopeです。研究結果がpositiveかnegativeかでは決めません。", "review-note"));
   elements.candidate.replaceChildren(fragment);
@@ -240,6 +261,116 @@ async function loadQueue({ reset = false } = {}) {
   }
 }
 
+function bookmarkSourceUrl(candidate) {
+  const direct = safeUrl(candidate.sourceUrl);
+  if (direct) return direct;
+  if (candidate.doi) return `https://doi.org/${encodeURIComponent(candidate.doi)}`;
+  if (candidate.pmid) return `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(candidate.pmid)}/`;
+  if (candidate.pmcid) return `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(candidate.pmcid)}/`;
+  return null;
+}
+
+function showBookmarkedCandidate(candidate) {
+  const existing = state.queue.find((item) => item.candidateKey === candidate.candidateKey);
+  const viewed = existing ?? { ...candidate, translationStatus: "loading" };
+  state.queue = [viewed, ...state.queue.filter((item) => item.candidateKey !== candidate.candidateKey)];
+  elements["bookmark-dialog"].close();
+  renderCandidate();
+  if (!viewed.translatedTitle) loadTitleTranslations([viewed]);
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function bookmarkItem(candidate) {
+  const item = document.createElement("article");
+  item.className = "bookmark-item";
+  item.append(text("strong", candidate.title));
+  item.append(text(
+    "span",
+    [candidate.publicationYear, candidate.journal, candidate.reviewStatus, candidate.candidateKey].filter(Boolean).join(" · "),
+    "bookmark-item-meta",
+  ));
+  const actions = document.createElement("div");
+  actions.className = "bookmark-item-actions";
+  const sourceUrl = bookmarkSourceUrl(candidate);
+  if (sourceUrl) actions.append(sourceLink("原資料を開く", sourceUrl));
+  const show = text("button", "レビュー画面で表示", "secondary");
+  show.type = "button";
+  show.addEventListener("click", () => showBookmarkedCandidate(candidate));
+  actions.append(show);
+  const remove = text("button", "ブックマーク解除", "bookmark-remove");
+  remove.type = "button";
+  remove.addEventListener("click", () => toggleBookmark(candidate, false));
+  actions.append(remove);
+  item.append(actions);
+  return item;
+}
+
+function renderBookmarks() {
+  const reviewer = reviewerValue();
+  elements["bookmark-summary"].textContent = `${reviewer} · ${state.bookmarks.size}件`;
+  const candidates = [...state.bookmarks.values()];
+  if (!candidates.length) {
+    elements["bookmark-results"].replaceChildren(text("p", "このreviewerの保存論文はありません。", "abstract-status"));
+    return;
+  }
+  elements["bookmark-results"].replaceChildren(...candidates.map(bookmarkItem));
+}
+
+async function loadBookmarks() {
+  const reviewer = reviewerValue();
+  if (!reviewer) {
+    state.bookmarks.clear();
+    state.bookmarkReviewer = "";
+    updateBookmarkCount();
+    renderCandidate();
+    return;
+  }
+  const result = await api(`/api/review/v1/bookmarks?reviewer=${encodeURIComponent(reviewer)}`);
+  if (reviewerValue() !== reviewer) return;
+  state.bookmarks = new Map(result.data.map((candidate) => [candidate.candidateKey, candidate]));
+  state.bookmarkReviewer = reviewer;
+  updateBookmarkCount();
+  renderCandidate();
+  if (elements["bookmark-dialog"].open) renderBookmarks();
+}
+
+async function ensureBookmarks(reviewer) {
+  if (state.bookmarkReviewer !== reviewer) await loadBookmarks();
+}
+
+async function toggleBookmark(candidate, bookmarked) {
+  const reviewer = reviewerValue();
+  if (!reviewer) {
+    showToast("先にReviewer identifierを入力してください");
+    elements.reviewer.focus();
+    return;
+  }
+  try {
+    await ensureBookmarks(reviewer);
+    const next = typeof bookmarked === "boolean" ? bookmarked : !isBookmarked(candidate.candidateKey);
+    elements["save-status"].textContent = "保存中…";
+    const result = await api("/api/review/v1/bookmarks", {
+      method: "POST",
+      body: JSON.stringify({ candidateKey: candidate.candidateKey, reviewer, bookmarked: next }),
+    });
+    if (reviewerValue() !== reviewer) {
+      await loadBookmarks();
+      return;
+    }
+    if (next) state.bookmarks.set(candidate.candidateKey, { ...candidate, bookmarkedAt: result.bookmarkedAt });
+    else state.bookmarks.delete(candidate.candidateKey);
+    state.bookmarkReviewer = reviewer;
+    elements["save-status"].textContent = "保存済み";
+    updateBookmarkCount();
+    renderCandidate();
+    if (elements["bookmark-dialog"].open) renderBookmarks();
+    showToast(next ? "論文をブックマークしました" : "ブックマークを解除しました");
+  } catch (error) {
+    elements["save-status"].textContent = "保存失敗";
+    showToast(error.message);
+  }
+}
+
 function renderAbstract(abstract) {
   const fragment = document.createDocumentFragment();
   const meta = document.createElement("div");
@@ -299,7 +430,7 @@ async function openAbstract(candidate) {
 async function loadReview() {
   showApp();
   elements["save-status"].textContent = "読込中…";
-  await Promise.all([loadProgress(), loadQueue({ reset: true })]);
+  await Promise.all([loadProgress(), loadQueue({ reset: true }), loadBookmarks()]);
 }
 
 function adjustProgress(previousStatus, decision) {
@@ -405,13 +536,39 @@ elements["export-csv"].addEventListener("click", () => {
   location.assign(`/api/review/v1/export?screeningHint=${hint}`);
 });
 elements["close-abstract"].addEventListener("click", () => elements["abstract-dialog"].close());
+elements["close-bookmarks"].addEventListener("click", () => elements["bookmark-dialog"].close());
+elements["show-bookmarks"].addEventListener("click", async () => {
+  if (!reviewerValue()) {
+    showToast("先にReviewer identifierを入力してください");
+    elements.reviewer.focus();
+    return;
+  }
+  elements["bookmark-dialog"].showModal();
+  elements["bookmark-results"].replaceChildren(text("p", "保存論文を読み込んでいます…", "abstract-status"));
+  try {
+    await loadBookmarks();
+    renderBookmarks();
+  } catch (error) {
+    elements["bookmark-results"].replaceChildren(text("p", error.message, "abstract-status"));
+  }
+});
+elements["bookmark-export"].addEventListener("click", () => {
+  const reviewer = reviewerValue();
+  if (!reviewer) return;
+  location.assign(`/api/review/v1/bookmarks/export?reviewer=${encodeURIComponent(reviewer)}`);
+});
 
 elements.reviewer.value = localStorage.getItem("candidate-reviewer") ?? "";
 const savedHint = localStorage.getItem("candidate-review-hint");
 if ([...elements["screening-hint"].options].some((option) => option.value === savedHint)) {
   elements["screening-hint"].value = savedHint;
 }
-elements.reviewer.addEventListener("input", () => localStorage.setItem("candidate-reviewer", elements.reviewer.value.trim()));
+elements.reviewer.addEventListener("input", () => {
+  localStorage.setItem("candidate-reviewer", reviewerValue());
+  updateBookmarkCount();
+  renderCandidate();
+});
+elements.reviewer.addEventListener("change", () => loadBookmarks().catch((error) => showToast(error.message)));
 elements["screening-hint"].addEventListener("change", () => {
   localStorage.setItem("candidate-review-hint", elements["screening-hint"].value);
   state.lastSaved = null;

@@ -45,11 +45,22 @@ function reviewCsv(rows) {
   ].join("\r\n") + "\r\n";
 }
 
-function csvResponse(body, screeningHint) {
+function bookmarkCsv(rows) {
+  const columns = [
+    "bookmarked_at", "reviewer", "candidate_key", "review_status", "screening_hint",
+    "title", "publication_year", "journal", "doi", "pmid", "pmcid", "source_url",
+  ];
+  return [
+    columns.map(csvCell).join(","),
+    ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
+  ].join("\r\n") + "\r\n";
+}
+
+function csvResponse(body, filename) {
   return new Response(body, {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="candidate-review.${screeningHint}.csv"`,
+      "content-disposition": `attachment; filename="${filename}"`,
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
@@ -120,6 +131,7 @@ function candidateView(row) {
     reviewReason: row.review_reason,
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
+    bookmarkedAt: row.bookmarked_at ?? null,
   };
 }
 
@@ -229,6 +241,36 @@ async function saveDecision(request, repository, options) {
   });
 }
 
+async function saveBookmark(request, repository, now) {
+  if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
+  let body;
+  try {
+    body = await jsonBody(request);
+    body.candidateKey = cleanText(body.candidateKey, "candidateKey", 240);
+    body.reviewer = cleanText(body.reviewer, "reviewer", 200);
+    if (typeof body.bookmarked !== "boolean") throw new TypeError("bookmarked must be boolean");
+  } catch (error) {
+    return securedError(request, 400, "invalid_request", error.message);
+  }
+  if (!await repository.getCandidate(body.candidateKey)) {
+    return securedError(request, 404, "candidate_not_found", "Candidate not found.");
+  }
+  const createdAt = new Date(now()).toISOString();
+  await repository.setBookmark({
+    candidateKey: body.candidateKey,
+    reviewer: body.reviewer,
+    bookmarked: body.bookmarked,
+    createdAt,
+  });
+  return securedJson(request, {
+    saved: true,
+    candidateKey: body.candidateKey,
+    reviewer: body.reviewer,
+    bookmarked: body.bookmarked,
+    bookmarkedAt: body.bookmarked ? createdAt : null,
+  });
+}
+
 function translationService(env, repository, options, now) {
   return options.translationService ?? createReviewTranslationService({
     repository,
@@ -326,7 +368,28 @@ export async function handleReview(request, env, options = {}) {
   }
   if (url.pathname === "/api/review/v1/export" && request.method === "GET") {
     const hint = screeningHint(url.searchParams.get("screeningHint"));
-    return csvResponse(reviewCsv(await repository.getCompletedReviews(hint)), hint);
+    return csvResponse(reviewCsv(await repository.getCompletedReviews(hint)), `candidate-review.${hint}.csv`);
+  }
+  if (url.pathname === "/api/review/v1/bookmarks" && request.method === "GET") {
+    let reviewer;
+    try {
+      reviewer = cleanText(url.searchParams.get("reviewer"), "reviewer", 200);
+    } catch (error) {
+      return securedError(request, 400, "invalid_request", error.message);
+    }
+    return securedJson(request, { data: (await repository.getBookmarks(reviewer)).map(candidateView), reviewer });
+  }
+  if (url.pathname === "/api/review/v1/bookmarks/export" && request.method === "GET") {
+    let reviewer;
+    try {
+      reviewer = cleanText(url.searchParams.get("reviewer"), "reviewer", 200);
+    } catch (error) {
+      return securedError(request, 400, "invalid_request", error.message);
+    }
+    return csvResponse(bookmarkCsv(await repository.getBookmarksForExport(reviewer)), "candidate-bookmarks.csv");
+  }
+  if (url.pathname === "/api/review/v1/bookmarks" && request.method === "POST") {
+    return saveBookmark(request, repository, now);
   }
   if (url.pathname === "/api/review/v1/translations/titles" && request.method === "POST") {
     return translateTitles(request, translationService(env, repository, options, now));

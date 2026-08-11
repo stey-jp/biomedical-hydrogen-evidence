@@ -148,7 +148,7 @@ Extractionはplan作成とexact hash承認を分離します。次は通信し�
 npm run extraction:dry-run
 ```
 
-候補screeningは、認証付きのスマートフォン画面`/review`からPC常時起動なしで継続できます。英語タイトルとDeepL日本語参考訳を並べ、必要な候補だけEurope PMC要旨の文単位対訳を一時表示します。タイトル訳は原文hash付きでD1へcacheし、要旨・要旨訳は保存しません。判定はD1へ監査履歴付きで保存され、CSV書き出しもできます。offline CSV・field review commandと公式mobile clientのbuild方法は[human review手順](docs/human-review.md)と[mobile client手順](docs/mobile-clients.md)を参照してください。
+候補screeningは、認証付きのスマートフォン画面`/review`からPC常時起動なしで継続できます。英語タイトルとDeepL日本語参考訳を並べ、必要な候補だけEurope PMC要旨の文単位対訳を一時表示します。タイトル訳は原文hash付きでD1へcacheし、要旨・要旨訳は保存しません。判定はD1へ監査履歴付きで保存され、reviewer別の論文ブックマーク・一覧・CSV書き出しもできます。offline CSV・field review commandと公式mobile clientのbuild方法は[human review手順](docs/human-review.md)と[mobile client手順](docs/mobile-clients.md)を参照してください。
 
 Dependenciesは次の3つだけです。
 
