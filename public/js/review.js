@@ -52,10 +52,9 @@ function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.hidden = false;
   if (wasHidden) {
-    window.requestAnimationFrame(() => elements.toast.classList.add("is-visible"));
-  } else {
-    elements.toast.classList.add("is-visible");
+    elements.toast.getBoundingClientRect();
   }
+  elements.toast.classList.add("is-visible");
   toastVisibilityTimer = window.setTimeout(() => {
     elements.toast.classList.remove("is-visible");
     toastVisibilityTimer = window.setTimeout(() => {
@@ -107,14 +106,13 @@ function openDialog(dialog) {
   dialog.returnValue = "";
   dialog.classList.remove("is-closing", "is-visible");
   dialog.showModal();
+  dialog.getBoundingClientRect();
+  dialog.classList.add("is-visible");
   const focusTarget = dialog.querySelector(".dialog-card");
   if (focusTarget) {
     focusTarget.tabIndex = -1;
     focusTarget.focus({ preventScroll: true });
   }
-  window.requestAnimationFrame(() => {
-    if (dialog.open && !dialogCloseStates.has(dialog)) dialog.classList.add("is-visible");
-  });
 }
 
 function closeDialog(dialog, returnValue = "cancel") {
@@ -123,14 +121,13 @@ function closeDialog(dialog, returnValue = "cancel") {
   if (activeClose) return activeClose;
   dialog.classList.remove("is-visible");
   dialog.classList.add("is-closing");
-  const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240;
   const pendingClose = new Promise((resolve) => {
     window.setTimeout(() => {
       dialogCloseStates.delete(dialog);
       if (dialog.open) dialog.close(returnValue);
       dialog.classList.remove("is-closing");
       resolve();
-    }, delay);
+    }, 240);
   });
   dialogCloseStates.set(dialog, pendingClose);
   return pendingClose;

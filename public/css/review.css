@@ -311,7 +311,4 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
   *,
   *::before,
   *::after { scroll-behavior: auto !important; }
-  dialog,
-  .toast { transform: none; transition: none; }
-  dialog::backdrop { transition: none; }
 }
