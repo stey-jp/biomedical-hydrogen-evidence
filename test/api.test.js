@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { handleRequest } from "../src/index.js";
 import { handleApi } from "../src/routes/api.js";
 
 const service = {
@@ -26,10 +27,19 @@ test("API rejects write methods", async () => {
   assert.equal((await response.json()).error.code, "method_not_allowed");
 });
 
+test("review page CSP permits the Google Material Symbols stylesheet and font only", async () => {
+  const response = await handleRequest(new Request("https://example.test/review"), {
+    ASSETS: { async fetch() { return new Response("<!doctype html>", { headers: { "content-type": "text/html" } }); } },
+  });
+  const policy = response.headers.get("content-security-policy");
+  assert.match(policy, /style-src 'self' https:\/\/fonts\.googleapis\.com/u);
+  assert.match(policy, /font-src 'self' https:\/\/fonts\.gstatic\.com/u);
+  assert.doesNotMatch(policy, /\*/u);
+});
+
 test("study and evidence routes use stable public IDs", async () => {
   const studyResponse = await handleApi(new Request("https://example.test/api/v1/studies/BHE-FIXTURE-0001"), service);
   const evidenceResponse = await handleApi(new Request("https://example.test/api/v1/studies/BHE-FIXTURE-0001/evidence"), service);
   assert.equal((await studyResponse.json()).data.publicId, "BHE-FIXTURE-0001");
   assert.deepEqual((await evidenceResponse.json()).data.evidence, []);
 });
-

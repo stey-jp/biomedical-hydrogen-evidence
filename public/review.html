@@ -8,6 +8,7 @@
   <meta name="color-scheme" content="light">
   <title>Candidate Review · Biomedical Hydrogen Evidence</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&amp;icon_names=bookmark,bookmark_border,close,settings&amp;display=block">
   <link rel="stylesheet" href="/css/review.css">
 </head>
 <body>
@@ -17,7 +18,7 @@
       <h1>Candidate Review</h1>
     </div>
     <button id="options-button" type="button" class="header-icon-button" aria-label="オプション設定を開く" aria-haspopup="dialog" hidden>
-      <span aria-hidden="true">&#9881;</span>
+      <span class="material-symbols-rounded" aria-hidden="true">settings</span>
     </button>
   </header>
 
@@ -68,7 +69,7 @@
     <div class="dialog-card">
       <div class="dialog-heading">
         <h2 id="options-title">オプション設定</h2>
-        <button id="close-options" type="button" class="icon-button" aria-label="閉じる">×</button>
+        <button id="close-options" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <div class="options-fields">
         <label>対象キュー
@@ -78,9 +79,13 @@
             <option value="likely_non_biomedical">対象外の可能性</option>
           </select>
         </label>
+        <label>Reviewer履歴
+          <select id="reviewer-history">
+            <option value="">履歴を読み込んでいます…</option>
+          </select>
+        </label>
         <label>Reviewer identifier
-          <input id="reviewer" list="reviewer-options" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="入力または履歴から選択">
-          <datalist id="reviewer-options"></datalist>
+          <input id="reviewer" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="新しいidentifierを入力">
         </label>
       </div>
       <div class="options-actions">
@@ -95,7 +100,7 @@
     <form method="dialog" class="dialog-card">
       <div class="dialog-heading">
         <h2>対象外の理由</h2>
-        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+        <button value="cancel" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <button value="not_h2" class="reason-option">分子状水素H₂を扱っていない</button>
       <button value="non_biomedical" class="reason-option">植物・農業・食品保存など対象外</button>
@@ -109,7 +114,7 @@
     <form method="dialog" class="dialog-card" id="duplicate-form">
       <div class="dialog-heading">
         <h2>重複先を確認</h2>
-        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+        <button value="cancel" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <p class="dialog-help">同一タイトル候補を自動表示します。なければcandidate key・DOI・PMID・PMCIDで検索できます。</p>
       <div id="duplicate-results" class="duplicate-results" aria-live="polite"></div>
@@ -127,7 +132,7 @@
     <form method="dialog" class="dialog-card" id="reason-form">
       <div class="dialog-heading">
         <h2>対象外の理由</h2>
-        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+        <button id="close-reason" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <label>Reason
         <textarea id="reason-text" maxlength="2000" rows="5" required></textarea>
@@ -140,9 +145,9 @@
     <div class="dialog-card abstract-dialog-card">
       <div class="dialog-heading dialog-heading-sticky">
         <h2>要旨の原文・日本語対訳</h2>
-        <button id="close-abstract" type="button" class="icon-button" aria-label="閉じる">×</button>
+        <button id="close-abstract" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
-      <p class="dialog-help">日本語はDeepLによる参考訳です。判断では英語原文と原資料を優先してください。</p>
+      <p class="dialog-help">日本語は参考訳です。判断では英語原文と原資料を優先してください。</p>
       <div id="abstract-content" class="abstract-content" aria-live="polite"></div>
     </div>
   </dialog>
@@ -151,7 +156,7 @@
     <div class="dialog-card bookmark-dialog-card">
       <div class="dialog-heading dialog-heading-sticky">
         <h2>保存した論文</h2>
-        <button id="close-bookmarks" type="button" class="icon-button" aria-label="閉じる">×</button>
+        <button id="close-bookmarks" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
       </div>
       <p id="bookmark-summary" class="dialog-help"></p>
       <button id="bookmark-export" type="button" class="secondary bookmark-export">ブックマークCSVを書き出す</button>

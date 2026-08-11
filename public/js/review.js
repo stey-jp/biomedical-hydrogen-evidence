@@ -13,11 +13,11 @@ const state = {
 
 const elements = Object.fromEntries([
   "options-button", "options-dialog", "close-options", "login-panel", "login-form", "admin-token", "login-error",
-  "review-app", "screening-hint", "reviewer", "reviewer-options", "logout", "export-csv", "show-bookmarks", "progress-text",
+  "review-app", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
-  "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog",
+  "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog", "close-reason",
   "reason-form", "reason-text", "toast",
   "abstract-dialog", "abstract-content", "close-abstract",
   "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "close-bookmarks",
@@ -81,6 +81,20 @@ function text(tag, value, className) {
   return node;
 }
 
+function materialIcon(name) {
+  const icon = text("span", name, "material-symbols-rounded");
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+function openDialog(dialog) {
+  dialog.showModal();
+  const focusTarget = dialog.querySelector(".dialog-card");
+  if (!focusTarget) return;
+  focusTarget.tabIndex = -1;
+  focusTarget.focus({ preventScroll: true });
+}
+
 function sourceLink(label, url) {
   const anchor = document.createElement("a");
   anchor.className = "source-link";
@@ -100,13 +114,19 @@ function reviewerValue() {
 }
 
 function renderReviewerOptions() {
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = state.reviewers.length ? "履歴から選択" : "履歴はまだありません";
   const options = state.reviewers.map((entry) => {
     const option = document.createElement("option");
     option.value = entry.reviewer;
-    option.label = `${entry.reviewCount}件 · 最終 ${entry.lastReviewedAt?.slice(0, 10) ?? "不明"}`;
+    option.textContent = `${entry.reviewer}（${entry.reviewCount}件 · 最終 ${entry.lastReviewedAt?.slice(0, 10) ?? "不明"}）`;
     return option;
   });
-  elements["reviewer-options"].replaceChildren(...options);
+  elements["reviewer-history"].replaceChildren(placeholder, ...options);
+  elements["reviewer-history"].value = state.reviewers.some((entry) => entry.reviewer === reviewerValue())
+    ? reviewerValue()
+    : "";
 }
 
 async function loadReviewers() {
@@ -144,8 +164,7 @@ function disableDecisions(disabled) {
 function titleTranslation(candidate) {
   const container = document.createElement("section");
   container.className = "title-translation";
-  const provider = candidate.translationProvider === "source" ? "原文" : "DeepL";
-  container.append(text("span", `日本語参考訳 · ${provider}`, "translation-label"));
+  container.append(text("span", "日本語参考訳", "translation-label"));
   if (candidate.translatedTitle) {
     const translation = text("p", candidate.translatedTitle);
     translation.lang = "ja";
@@ -154,7 +173,7 @@ function titleTranslation(candidate) {
     container.append(text("p", "翻訳を読み込んでいます…", "translation-pending"));
   } else {
     const message = candidate.translationError === "translation_disabled" || state.translationDisabled
-      ? "DeepL APIキーの設定後に日本語訳を表示します。"
+      ? "翻訳APIの設定後に日本語訳を表示します。"
       : "日本語訳を取得できませんでした。";
     container.append(text("p", message, "translation-pending"));
     if (!state.translationDisabled) {
@@ -210,9 +229,12 @@ function renderCandidate() {
     abstractButton.addEventListener("click", () => openAbstract(candidate));
     links.append(abstractButton);
   }
-  const bookmarkButton = text("button", isBookmarked(candidate.candidateKey) ? "★ 保存済み" : "☆ ブックマーク", "source-link bookmark-button");
+  const bookmarked = isBookmarked(candidate.candidateKey);
+  const bookmarkButton = document.createElement("button");
+  bookmarkButton.className = "source-link bookmark-button";
   bookmarkButton.type = "button";
-  bookmarkButton.setAttribute("aria-pressed", String(isBookmarked(candidate.candidateKey)));
+  bookmarkButton.setAttribute("aria-pressed", String(bookmarked));
+  bookmarkButton.append(materialIcon(bookmarked ? "bookmark" : "bookmark_border"), bookmarked ? "保存済み" : "ブックマーク");
   bookmarkButton.addEventListener("click", () => toggleBookmark(candidate));
   links.append(bookmarkButton);
   fragment.append(links);
@@ -403,7 +425,7 @@ function renderAbstract(abstract) {
   const fragment = document.createDocumentFragment();
   const meta = document.createElement("div");
   meta.className = "abstract-meta";
-  meta.append(text("span", `${abstract.source} · ${abstract.provider}`));
+  meta.append(text("span", abstract.source));
   const sourceUrl = safeUrl(abstract.sourceUrl);
   if (sourceUrl) meta.append(sourceLink("原資料を開く", sourceUrl));
   fragment.append(meta);
@@ -430,7 +452,7 @@ function renderAbstract(abstract) {
 }
 
 async function openAbstract(candidate) {
-  elements["abstract-dialog"].showModal();
+  openDialog(elements["abstract-dialog"]);
   const cached = state.abstracts.get(candidate.candidateKey);
   if (cached) {
     renderAbstract(cached);
@@ -447,7 +469,7 @@ async function openAbstract(candidate) {
   } catch (error) {
     if (error.code === "translation_disabled") state.translationDisabled = true;
     const message = error.code === "translation_disabled"
-      ? "DeepL APIキーの設定後に要旨対訳を表示します。"
+      ? "翻訳APIの設定後に要旨対訳を表示します。"
       : error.code === "abstract_unavailable"
         ? "Europe PMCから利用可能な要旨を取得できませんでした。原資料を確認してください。"
         : "要旨対訳を取得できませんでした。時間をおいて再試行してください。";
@@ -551,7 +573,7 @@ elements["login-form"].addEventListener("submit", async (event) => {
   }
 });
 
-elements["options-button"].addEventListener("click", () => elements["options-dialog"].showModal());
+elements["options-button"].addEventListener("click", () => openDialog(elements["options-dialog"]));
 elements["close-options"].addEventListener("click", () => elements["options-dialog"].close());
 elements.logout.addEventListener("click", async () => {
   await api("/api/review/v1/session", { method: "DELETE" }).catch(() => {});
@@ -563,6 +585,7 @@ elements["export-csv"].addEventListener("click", () => {
 });
 elements["close-abstract"].addEventListener("click", () => elements["abstract-dialog"].close());
 elements["close-bookmarks"].addEventListener("click", () => elements["bookmark-dialog"].close());
+elements["close-reason"].addEventListener("click", () => elements["reason-dialog"].close());
 elements["show-bookmarks"].addEventListener("click", async () => {
   if (!reviewerValue()) {
     showToast("先にReviewer identifierを入力してください");
@@ -570,7 +593,7 @@ elements["show-bookmarks"].addEventListener("click", async () => {
     return;
   }
   elements["options-dialog"].close();
-  elements["bookmark-dialog"].showModal();
+  openDialog(elements["bookmark-dialog"]);
   elements["bookmark-results"].replaceChildren(text("p", "保存論文を読み込んでいます…", "abstract-status"));
   try {
     await loadBookmarks();
@@ -592,10 +615,19 @@ if ([...elements["screening-hint"].options].some((option) => option.value === sa
 }
 elements.reviewer.addEventListener("input", () => {
   localStorage.setItem("candidate-reviewer", reviewerValue());
+  elements["reviewer-history"].value = state.reviewers.some((entry) => entry.reviewer === reviewerValue())
+    ? reviewerValue()
+    : "";
   updateBookmarkCount();
   renderCandidate();
 });
 elements.reviewer.addEventListener("change", () => loadBookmarks().catch((error) => showToast(error.message)));
+elements["reviewer-history"].addEventListener("change", () => {
+  if (!elements["reviewer-history"].value) return;
+  elements.reviewer.value = elements["reviewer-history"].value;
+  elements.reviewer.dispatchEvent(new Event("input", { bubbles: true }));
+  loadBookmarks().catch((error) => showToast(error.message));
+});
 elements["screening-hint"].addEventListener("change", () => {
   localStorage.setItem("candidate-review-hint", elements["screening-hint"].value);
   state.lastSaved = null;
@@ -617,10 +649,10 @@ elements["revise-last"].addEventListener("click", () => {
 });
 elements.include.addEventListener("click", () => saveDecision("include", "分子状水素H₂の生物医学研究で、タイトルと書誌情報を原資料で確認。"));
 elements["needs-review"].addEventListener("click", () => saveDecision("needs_review", "metadataだけでは対象判定に必要な情報が不足。"));
-elements.exclude.addEventListener("click", () => elements["exclude-dialog"].showModal());
+elements.exclude.addEventListener("click", () => openDialog(elements["exclude-dialog"]));
 elements.duplicate.addEventListener("click", () => {
   elements["duplicate-query"].value = "";
-  elements["duplicate-dialog"].showModal();
+  openDialog(elements["duplicate-dialog"]);
   loadDuplicates();
 });
 
@@ -629,7 +661,7 @@ elements["exclude-dialog"].addEventListener("close", () => {
   if (excludeReasons[selected]) saveDecision("exclude", excludeReasons[selected]);
   else if (selected === "other") {
     elements["reason-text"].value = "";
-    elements["reason-dialog"].showModal();
+    openDialog(elements["reason-dialog"]);
   }
 });
 
