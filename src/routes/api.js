@@ -29,7 +29,7 @@ function withApiHeaders(response) {
 
 export async function handleApi(request, service) {
   if (request.method !== "GET" && request.method !== "HEAD") {
-    return errorResponse(request, 405, "method_not_allowed", "The Phase 1 API is read-only.");
+    return errorResponse(request, 405, "method_not_allowed", "The first-party API is read-only.");
   }
 
   const url = new URL(request.url);
@@ -65,4 +65,3 @@ export async function handleApi(request, service) {
     throw error;
   }
 }
-
