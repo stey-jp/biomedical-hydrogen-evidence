@@ -109,6 +109,39 @@ test("Europe PMC lookup prefers stable identifiers and returns plain abstract te
   assert.equal(result.rightsStatus, "open_access_check_license");
 });
 
+test("Europe PMC lookup falls back to the free full-text XML abstract", async () => {
+  const requestedUrls = [];
+  const result = await fetchEuropePmcAbstract({ pmid: "456" }, async (url, init) => {
+    requestedUrls.push({ url: String(url), accept: init.headers.accept });
+    if (String(url).endsWith("/PMC789/fullTextXML")) {
+      return new Response(`
+        <article>
+          <front>
+            <article-meta>
+              <abstract>
+                <title>Abstract</title>
+                <sec><title>Background</title><p>Molecular hydrogen &amp; saline were compared.</p></sec>
+              </abstract>
+            </article-meta>
+          </front>
+          <body><sec><title>Summary</title><p>Full text must not be returned.</p></sec></body>
+        </article>
+      `, { headers: { "content-type": "application/xml" } });
+    }
+    return Response.json({
+      resultList: {
+        result: [{ pmid: "456", pmcid: "PMC789", isOpenAccess: "Y" }],
+      },
+    });
+  });
+
+  assert.deepEqual(requestedUrls.map((request) => request.accept), ["application/json", "application/xml"]);
+  assert.equal(requestedUrls[1].url, "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC789/fullTextXML");
+  assert.equal(result.text, "Abstract Background Molecular hydrogen & saline were compared.");
+  assert.doesNotMatch(result.text, /Full text must not be returned/u);
+  assert.equal(result.sourceUrl, "https://europepmc.org/article/PMC/PMC789");
+});
+
 test("review translation service reuses title cache and writes only missing title translations", async () => {
   const cachedTitle = "Cached title";
   const saved = [];
