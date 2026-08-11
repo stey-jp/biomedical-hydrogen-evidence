@@ -257,16 +257,33 @@ dialog::backdrop { background: rgb(10 20 15 / 55%); }
 .toast {
   position: fixed;
   z-index: 20;
-  top: max(74px, calc(env(safe-area-inset-top) + 62px));
+  top: max(88px, calc(env(safe-area-inset-top) + 76px));
   right: 14px;
   left: 14px;
   max-width: 520px;
   margin: auto;
   padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 10px;
-  background: #202b25;
+  backdrop-filter: blur(8px);
+  background: rgb(32 43 37 / 88%);
+  box-shadow: 0 8px 24px rgb(23 35 29 / 14%);
   color: #fff;
+  opacity: 0;
+  pointer-events: none;
   text-align: center;
+  transform: translateY(-8px);
+  visibility: hidden;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    visibility 0s linear 220ms;
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 @media (min-width: 620px) {
@@ -280,4 +297,5 @@ dialog::backdrop { background: rgb(10 20 15 / 55%); }
   *,
   *::before,
   *::after { scroll-behavior: auto !important; }
+  .toast { transform: none; transition: none; }
 }

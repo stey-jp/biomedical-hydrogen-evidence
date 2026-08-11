@@ -44,10 +44,24 @@ async function api(path, options = {}) {
   return body;
 }
 
+let toastVisibilityTimer;
+
 function showToast(message) {
+  window.clearTimeout(toastVisibilityTimer);
+  const wasHidden = elements.toast.hidden;
   elements.toast.textContent = message;
   elements.toast.hidden = false;
-  window.setTimeout(() => { elements.toast.hidden = true; }, 2600);
+  if (wasHidden) {
+    window.requestAnimationFrame(() => elements.toast.classList.add("is-visible"));
+  } else {
+    elements.toast.classList.add("is-visible");
+  }
+  toastVisibilityTimer = window.setTimeout(() => {
+    elements.toast.classList.remove("is-visible");
+    toastVisibilityTimer = window.setTimeout(() => {
+      if (!elements.toast.classList.contains("is-visible")) elements.toast.hidden = true;
+    }, 240);
+  }, 2600);
 }
 
 function showLogin(message = "") {
