@@ -137,7 +137,6 @@ function mapStudy(record) {
       fields: record.verifications.map((item) => ({
         fieldName: item.field_name,
         status: item.status,
-        reviewer: item.reviewer,
         note: item.note,
         verifiedAt: item.verified_at,
       })),
@@ -163,7 +162,6 @@ function mapEvidence(item) {
     rightsStatus: item.rights_status,
     verification: {
       status: item.verification_status ?? "unverified",
-      reviewer: item.reviewer,
       note: item.note,
       verifiedAt: item.verified_at,
     },
@@ -269,4 +267,3 @@ export function createStudyServiceFromRepository(repository) {
 }
 
 export const searchConstants = Object.freeze({ SPECIES_TYPES, ADMINISTRATION_ROUTES });
-

@@ -50,4 +50,4 @@ Discovery manifestとD1 candidate tableは書誌metadata、source attribution、
 
 ## Human review artifacts
 
-Candidate/field review CSVはGit対象外のlocal artifactです。review resultとしてD1へ保存するのはdecision、理由、reviewer identifier、artifact hash、短いprovenance参照です。review作業でも論文全文、PDF、長いabstract、長い引用をIssueやPull Requestへ複製しません。
+Candidate/field review CSVはGit対象外のlocal artifactです。review resultとしてD1へ保存するのはdecision、理由、reviewer identifier、artifact hash、短いprovenance参照です。reviewer identifierは非公開監査情報とし、認証済みreview route/CSV以外の一般公開APIへ返しません。review作業でも論文全文、PDF、長いabstract、長い引用をIssueやPull Requestへ複製しません。

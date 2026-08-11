@@ -35,6 +35,39 @@ test("review page CSP permits the Google Material Symbols stylesheet and font on
   assert.match(policy, /style-src 'self' https:\/\/fonts\.googleapis\.com/u);
   assert.match(policy, /font-src 'self' https:\/\/fonts\.gstatic\.com/u);
   assert.doesNotMatch(policy, /\*/u);
+  assert.equal(response.headers.get("strict-transport-security"), "max-age=31536000");
+  assert.equal(response.headers.get("permissions-policy"), "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+});
+
+test("review HTML aliases share the protected no-store response", async () => {
+  const response = await handleRequest(new Request("https://example.test/review.html"), {
+    ASSETS: { async fetch() { return new Response("<!doctype html>"); } },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(response.headers.get("content-security-policy"), /fonts\.googleapis\.com/u);
+});
+
+test("public HTML receives restrictive security headers", async () => {
+  const response = await handleRequest(new Request("https://example.test/"), {
+    ASSETS: { async fetch() { return new Response("<!doctype html>", { headers: { "content-type": "text/html" } }); } },
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-security-policy"), /default-src 'self'/u);
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.equal(response.headers.get("strict-transport-security"), "max-age=31536000");
+});
+
+test("production HTTP requests redirect to HTTPS while localhost remains usable", async () => {
+  const production = await handleRequest(new Request("http://example.test/review?queue=pending"), {});
+  assert.equal(production.status, 308);
+  assert.equal(production.headers.get("location"), "https://example.test/review?queue=pending");
+
+  const local = await handleRequest(new Request("http://localhost:8787/"), {
+    ASSETS: { async fetch() { return new Response("<!doctype html>"); } },
+  });
+  assert.equal(local.status, 200);
 });
 
 test("study and evidence routes use stable public IDs", async () => {

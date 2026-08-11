@@ -7,7 +7,18 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/mcp", "/healthz", "/review", "/review/"]
+    "run_worker_first": [
+      "/api/*",
+      "/mcp",
+      "/healthz",
+      "/",
+      "/index.html",
+      "/study",
+      "/study.html",
+      "/review",
+      "/review/",
+      "/review.html"
+    ]
   },
   "triggers": {
     "crons": ["0 18 * * *"]

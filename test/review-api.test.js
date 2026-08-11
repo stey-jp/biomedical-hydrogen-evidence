@@ -71,6 +71,11 @@ test("review session uses a signed, expiring HttpOnly cookie without retaining t
   assert.match(cookie, /Secure/u);
   assert.doesNotMatch(cookie, new RegExp(secret, "u"));
 
+  const remoteHttpCookie = reviewSessionCookie(value, new Request("http://example.test/review"));
+  const localHttpCookie = reviewSessionCookie(value, new Request("http://localhost:8787/review"));
+  assert.match(remoteHttpCookie, /Secure/u);
+  assert.doesNotMatch(localHttpCookie, /Secure/u);
+
   const authenticated = request("/api/review/v1/session", {
     headers: { cookie: cookie.split(";", 1)[0] },
   });

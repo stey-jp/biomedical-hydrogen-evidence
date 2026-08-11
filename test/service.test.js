@@ -42,10 +42,44 @@ test("evidence response separates provenance and verification fields", async () 
         section: "methods",
         rights_status: "cc0",
         verification_status: "human_verified",
+        reviewer: "private-reviewer-id",
       }];
     },
   }));
   const result = await service.getEvidence("BHE-FIXTURE-0001");
   assert.equal(result.evidence[0].fieldName, "population.participant_count");
   assert.equal(result.evidence[0].verification.status, "human_verified");
+  assert.equal(Object.hasOwn(result.evidence[0].verification, "reviewer"), false);
+});
+
+test("public study detail omits reviewer identifiers from field verification", async () => {
+  const service = createStudyServiceFromRepository(fakeRepository({
+    async getByPublicId() {
+      return {
+        study: {
+          public_id: "BHE-FIXTURE-0001",
+          title: "Synthetic study",
+          biomedical_relevance: 1,
+          verification_status: "human_verified",
+          record_kind: "fixture",
+        },
+        authors: [],
+        interventions: [],
+        numericValues: [],
+        outcomes: [],
+        safety: null,
+        transparency: null,
+        verifications: [{
+          field_name: "population.participant_count",
+          status: "human_verified",
+          reviewer: "private-reviewer-id",
+          note: "Source checked.",
+          verified_at: "2026-08-11T00:00:00.000Z",
+        }],
+      };
+    },
+  }));
+  const result = await service.getStudy("BHE-FIXTURE-0001");
+  assert.equal(result.verification.fields[0].status, "human_verified");
+  assert.equal(Object.hasOwn(result.verification.fields[0], "reviewer"), false);
 });

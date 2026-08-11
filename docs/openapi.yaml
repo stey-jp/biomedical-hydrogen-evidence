@@ -218,7 +218,7 @@ components:
         outcomes: { type: array, items: { type: object } }
         safety: { type: [object, 'null'] }
         researchTransparency: { type: [object, 'null'] }
-        verification: { type: object }
+        verification: { $ref: '#/components/schemas/StudyVerification' }
         recordKind: { type: string, enum: [published, fixture] }
         fixtureNotice: { type: [string, 'null'] }
     Evidence:
@@ -234,7 +234,35 @@ components:
         evidenceSnippet: { type: [string, 'null'] }
         sourceLicense: { type: [string, 'null'] }
         rightsStatus: { type: string }
-        verification: { type: object }
+        verification: { $ref: '#/components/schemas/PublicVerification' }
+    StudyVerification:
+      type: object
+      additionalProperties: false
+      description: Reviewer identifiers are retained in the private audit trail and omitted from this public response.
+      required: [status, fields, note]
+      properties:
+        status: { type: string }
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [fieldName, status]
+            properties:
+              fieldName: { type: string }
+              status: { type: string }
+              note: { type: [string, 'null'] }
+              verifiedAt: { type: [string, 'null'], format: date-time }
+        note: { type: string }
+    PublicVerification:
+      type: object
+      additionalProperties: false
+      description: Reviewer identifiers are retained in the private audit trail and omitted from this public response.
+      required: [status]
+      properties:
+        status: { type: string }
+        note: { type: [string, 'null'] }
+        verifiedAt: { type: [string, 'null'], format: date-time }
     Error:
       type: object
       required: [error]
@@ -246,4 +274,3 @@ components:
             code: { type: string }
             message: { type: string }
             details: { type: object }
-

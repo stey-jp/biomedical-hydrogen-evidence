@@ -12,6 +12,48 @@ import {
 } from "./utils/rate-limit.js";
 import { errorResponse, jsonResponse } from "./utils/responses.js";
 
+const PUBLIC_DOCUMENT_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; img-src 'self' data:";
+const REVIEW_DOCUMENT_CSP = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; img-src 'self' data:";
+
+function localDevelopmentHost(hostname) {
+  return hostname === "localhost"
+    || hostname.endsWith(".localhost")
+    || hostname === "127.0.0.1"
+    || hostname === "[::1]";
+}
+
+function httpsRedirect(request) {
+  const url = new URL(request.url);
+  if (url.protocol !== "http:" || localDevelopmentHost(url.hostname)) return null;
+  url.protocol = "https:";
+  return new Response(null, {
+    status: 308,
+    headers: {
+      location: url.toString(),
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+function securedDocument(response, contentSecurityPolicy, cacheControl) {
+  const headers = new Headers(response.headers);
+  if (cacheControl) headers.set("cache-control", cacheControl);
+  headers.set("content-security-policy", contentSecurityPolicy);
+  headers.set("strict-transport-security", "max-age=31536000");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("permissions-policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+  headers.set("cross-origin-opener-policy", "same-origin");
+  headers.set("cross-origin-resource-policy", "same-origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function enforceRateLimit(request, binding, scope) {
   const limiter = createRateLimiter(binding);
   const result = await limiter.check(rateLimitKey(request, scope));
@@ -36,21 +78,23 @@ async function reviewPage(request, env) {
   if (!env.ASSETS?.fetch) return errorResponse(request, 503, "assets_unavailable", "Review UI is unavailable.");
   const assetUrl = new URL("/review", request.url);
   const response = await env.ASSETS.fetch(new Request(assetUrl, request));
-  const headers = new Headers(response.headers);
-  headers.set("cache-control", "no-store");
-  headers.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; img-src 'self' data:");
-  headers.set("referrer-policy", "no-referrer");
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("x-frame-options", "DENY");
-  return new Response(response.body, { status: response.status, headers });
+  return securedDocument(response, REVIEW_DOCUMENT_CSP, "no-store");
+}
+
+async function publicPage(request, env) {
+  if (!env.ASSETS?.fetch) return errorResponse(request, 503, "assets_unavailable", "Web UI is unavailable.");
+  return securedDocument(await env.ASSETS.fetch(request), PUBLIC_DOCUMENT_CSP);
 }
 
 export async function handleRequest(request, env, ctx = {}) {
   const url = new URL(request.url);
 
+  const redirect = httpsRedirect(request);
+  if (redirect) return redirect;
+
   if (url.pathname === "/healthz") return health(request, env);
 
-  if (url.pathname === "/review" || url.pathname === "/review/") {
+  if (["/review", "/review/", "/review.html"].includes(url.pathname)) {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return errorResponse(request, 405, "method_not_allowed", "Method not allowed.");
     }
@@ -73,6 +117,13 @@ export async function handleRequest(request, env, ctx = {}) {
     const limited = await enforceRateLimit(request, env.MCP_RATE_LIMITER, "mcp");
     if (limited) return limited;
     return handleMcp(request, env, ctx);
+  }
+
+  if (["/", "/index.html", "/study", "/study.html"].includes(url.pathname)) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return errorResponse(request, 405, "method_not_allowed", "Method not allowed.");
+    }
+    return publicPage(request, env);
   }
 
   return errorResponse(request, 404, "not_found", "Route not found.");

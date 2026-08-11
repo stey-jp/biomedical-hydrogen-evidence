@@ -73,12 +73,19 @@ export async function verifyReviewSession(request, secret, now = Date.now()) {
   );
 }
 
+function secureCookieAttribute(request) {
+  const url = new URL(request.url);
+  const localDevelopment = url.hostname === "localhost"
+    || url.hostname.endsWith(".localhost")
+    || url.hostname === "127.0.0.1"
+    || url.hostname === "[::1]";
+  return url.protocol === "https:" || !localDevelopment ? "; Secure" : "";
+}
+
 export function reviewSessionCookie(value, request) {
-  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
-  return `${cookieName}=${value}; Path=/; Max-Age=${sessionLifetimeSeconds}; HttpOnly; SameSite=Strict${secure}`;
+  return `${cookieName}=${value}; Path=/; Max-Age=${sessionLifetimeSeconds}; HttpOnly; SameSite=Strict${secureCookieAttribute(request)}`;
 }
 
 export function expiredReviewSessionCookie(request) {
-  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
-  return `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict${secure}`;
+  return `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict${secureCookieAttribute(request)}`;
 }

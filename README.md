@@ -70,7 +70,7 @@ Consensusは同一fieldの正規化値を比較します。各providerの短いs
 
 ## Human verification
 
-状態は`unverified`、`machine_extracted`、`machine_checked`、`needs_human_review`、`human_verified`、`disputed`です。候補screeningとfield reviewをCSVで行い、reviewer、理由、artifact hash、immutable eventをD1へ残します。モデル一致だけで`human_verified`にはなりません。手順は[docs/human-review.md](docs/human-review.md)を参照してください。
+状態は`unverified`、`machine_extracted`、`machine_checked`、`needs_human_review`、`human_verified`、`disputed`です。候補screeningとfield reviewをCSVで行い、reviewer、理由、artifact hash、immutable eventをD1へ残します。reviewer identifierは非公開監査情報として保持し、一般公開APIへ返しません。モデル一致だけで`human_verified`にはなりません。手順は[docs/human-review.md](docs/human-review.md)を参照してください。
 
 ## Search
 
