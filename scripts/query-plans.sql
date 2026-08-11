@@ -16,6 +16,9 @@ EXPLAIN QUERY PLAN SELECT s.id
 EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE candidate_key = 'doi:10.1000/example';
 EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE doi = '10.1000/example';
 EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE review_status = 'pending' ORDER BY publication_year DESC, id DESC LIMIT 50;
+EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE screening_hint = 'likely_biomedical' AND review_status = 'pending' ORDER BY id LIMIT 20;
+EXPLAIN QUERY PLAN SELECT review_status, COUNT(*) FROM study_candidates WHERE screening_hint = 'likely_biomedical' GROUP BY review_status;
+EXPLAIN QUERY PLAN SELECT id FROM study_candidates WHERE title_normalized = 'molecular hydrogen candidate' AND candidate_key <> 'doi:10.1000/example' ORDER BY id LIMIT 10;
 EXPLAIN QUERY PLAN SELECT candidate_id FROM discovery_run_candidates WHERE run_id = 1;
 EXPLAIN QUERY PLAN SELECT id FROM extraction_runs WHERE public_id = 'EXT-FIXTURE-0001';
 EXPLAIN QUERY PLAN SELECT id FROM extraction_provider_calls WHERE extraction_run_id = 1 AND status = 'completed';

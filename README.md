@@ -148,7 +148,7 @@ Extractionはplan作成とexact hash承認を分離します。次は通信し�
 npm run extraction:dry-run
 ```
 
-候補・field review commandと公式mobile clientのbuild方法は[human review手順](docs/human-review.md)と[mobile client手順](docs/mobile-clients.md)を参照してください。
+候補screeningは、認証付きのスマートフォン画面`/review`からPC常時起動なしで継続できます。判定はD1へ監査履歴付きで保存され、CSV書き出しもできます。offline CSV・field review commandと公式mobile clientのbuild方法は[human review手順](docs/human-review.md)と[mobile client手順](docs/mobile-clients.md)を参照してください。
 
 Dependenciesは次の3つだけです。
 
@@ -181,7 +181,7 @@ npx @modelcontextprotocol/inspector@latest
 
 ## Rate limiting
 
-Workers Rate Limiting bindingsを検索ロジックから分離しています。既定値はAPIが120 requests/minute、MCPが60 requests/minute（各Cloudflare location・key単位）です。超過時は`429`と`Retry-After: 60`を返します。bindingを再現できないtest/local環境ではadapterがallow fallbackになり、adapter自体をunit testします。
+Workers Rate Limiting bindingsを検索ロジックから分離しています。既定値はAPIが120 requests/minute、MCPと非公開review routeが各60 requests/minute（各Cloudflare location・key単位）です。超過時は`429`と`Retry-After: 60`を返します。bindingを再現できないtest/local環境ではadapterがallow fallbackになり、adapter自体をunit testします。
 
 ## Deployment
 
@@ -190,6 +190,7 @@ Workers Rate Limiting bindingsを検索ロジックから分離しています�
 ```sh
 npx wrangler login
 npx wrangler d1 migrations apply biomedical-hydrogen-evidence --remote
+npx wrangler secret put REVIEW_ADMIN_TOKEN
 npm run deploy
 ```
 

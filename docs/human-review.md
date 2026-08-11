@@ -6,6 +6,30 @@ Phase 5は候補screeningとfield verificationを別々に扱います。AIの�
 
 ## Candidate screening
 
+### スマートフォンUI（PC常時起動不要）
+
+本番Workerの`/review`は、非公開candidate tableを直接screeningするモバイル優先の管理画面です。一般公開APIとは分離され、`REVIEW_ADMIN_TOKEN`でログインした同一originのブラウザだけが読み書きできます。トークンそのものはブラウザへ保存せず、ログイン後は30日で失効する署名済み`HttpOnly` / `SameSite=Strict` Cookieを使います。
+
+初回だけ32文字以上のランダムな管理トークンをCloudflare Secretへ登録し、Workerをdeployします。
+
+```powershell
+npx wrangler secret put REVIEW_ADMIN_TOKEN
+npm run deploy
+```
+
+以後はスマートフォンから`https://<worker-domain>/review`を開きます。優先候補、要確認候補、対象外の可能性がある候補を切り替え、reviewer identifierを入力して、`採用`、`対象外`、`保留`、`重複`を選びます。保存後は次の未判定候補へ進み、D1から再開できるためPCは不要です。
+
+- `採用`と`保留`は1 tap、`対象外`は定型理由を選ぶ2 tapです。
+- `重複`は同一正規化タイトルの候補を自動表示します。候補がなければcandidate key、DOI、PMID、PMCIDで検索し、重複先を特定できた場合だけ保存します。不確実なら`保留`にします。
+- 直前の判定は同じ画面で再表示して修正できます。修正も上書きではなく新しいreview eventとして残ります。
+- `CSV書き出し`は選択中キューの判定済み行を、既存importに必要な`candidate_key`、`decision`、`reason`、`reviewer`を含むCSVとして保存します。
+
+各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。
+
+local確認では`.dev.vars.example`を`.dev.vars`へコピーし、実際のランダムトークンへ置き換えてから`npm run dev`を実行します。`.dev.vars`はGit管理外です。
+
+### CSV workflow
+
 Discovery manifestからreview CSVを作ります。
 
 ```powershell

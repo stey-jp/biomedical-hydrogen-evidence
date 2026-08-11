@@ -1,0 +1,361 @@
+const state = {
+  queue: [],
+  loading: false,
+  progress: null,
+  lastSaved: null,
+  duplicateTarget: null,
+};
+
+const elements = Object.fromEntries([
+  "save-status", "login-panel", "login-form", "admin-token", "login-error",
+  "review-app", "screening-hint", "reviewer", "logout", "export-csv", "progress-text",
+  "progress-detail", "progress", "candidate", "skip", "queue-status",
+  "revise-last", "include", "exclude", "needs-review", "duplicate",
+  "exclude-dialog", "duplicate-dialog", "duplicate-form", "duplicate-results",
+  "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog",
+  "reason-form", "reason-text", "toast",
+].map((id) => [id, document.querySelector(`#${id}`)]));
+
+const excludeReasons = {
+  not_h2: "分子状水素H₂を扱っていない。",
+  non_biomedical: "植物・農業・食品保存など、生物医学研究の対象外。",
+  industrial: "産業用水素・燃料電池・水素製造等で対象外。",
+  not_report: "研究結果を報告する文献ではない。",
+};
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers);
+  if (options.body) headers.set("content-type", "application/json");
+  const response = await fetch(path, { ...options, headers });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error?.message ?? `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return body;
+}
+
+function showToast(message) {
+  elements.toast.textContent = message;
+  elements.toast.hidden = false;
+  window.setTimeout(() => { elements.toast.hidden = true; }, 2600);
+}
+
+function showLogin(message = "") {
+  elements["review-app"].hidden = true;
+  elements["login-panel"].hidden = false;
+  elements["login-error"].textContent = message;
+  elements["login-error"].hidden = !message;
+  elements["save-status"].textContent = "ログイン待ち";
+}
+
+function showApp() {
+  elements["login-panel"].hidden = true;
+  elements["review-app"].hidden = false;
+}
+
+function safeUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function text(tag, value, className) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = value;
+  return node;
+}
+
+function sourceLink(label, url) {
+  const anchor = document.createElement("a");
+  anchor.className = "source-link";
+  anchor.textContent = label;
+  anchor.href = url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  return anchor;
+}
+
+function currentCandidate() {
+  return state.queue[0];
+}
+
+function disableDecisions(disabled) {
+  document.querySelectorAll(".decision").forEach((button) => { button.disabled = disabled; });
+}
+
+function renderCandidate() {
+  const candidate = currentCandidate();
+  if (!candidate) {
+    const message = state.loading ? "候補を読み込んでいます…" : "このキューの未判定候補はありません。";
+    elements.candidate.replaceChildren(text("p", message));
+    elements["queue-status"].textContent = state.loading ? "読込中" : "完了";
+    elements.skip.disabled = true;
+    disableDecisions(true);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  fragment.append(text("p", candidate.screeningHint.replaceAll("_", " "), "candidate-number"));
+  fragment.append(text("h2", candidate.title));
+  const metadata = [candidate.publicationYear, candidate.journal].filter(Boolean).join(" · ");
+  fragment.append(text("p", metadata || "書誌metadata未収録", "metadata"));
+  if (candidate.authors.length) fragment.append(text("p", candidate.authors.join(" · "), "authors"));
+  fragment.append(text("p", candidate.candidateKey, "candidate-key"));
+
+  if (candidate.screeningReasons.length) {
+    const hints = document.createElement("ul");
+    hints.className = "hint-list";
+    candidate.screeningReasons.forEach((reason) => hints.append(text("li", reason)));
+    fragment.append(hints);
+  }
+
+  const links = document.createElement("div");
+  links.className = "link-grid";
+  if (candidate.doi) links.append(sourceLink("DOI", `https://doi.org/${encodeURIComponent(candidate.doi)}`));
+  if (candidate.pmid) links.append(sourceLink("PubMed", `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(candidate.pmid)}/`));
+  if (candidate.pmcid) links.append(sourceLink("PMC", `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(candidate.pmcid)}/`));
+  const sourceUrl = safeUrl(candidate.sourceUrl);
+  if (sourceUrl) links.append(sourceLink("原資料", sourceUrl));
+  fragment.append(links);
+  fragment.append(text("p", "判断するのは収録scopeです。研究結果がpositiveかnegativeかでは決めません。", "review-note"));
+  elements.candidate.replaceChildren(fragment);
+
+  elements["queue-status"].textContent = `端末に${state.queue.length}件読込済み`;
+  elements.skip.disabled = state.queue.length < 2;
+  disableDecisions(false);
+}
+
+function renderProgress() {
+  if (!state.progress) return;
+  const completed = state.progress.total - state.progress.pending;
+  elements.progress.max = Math.max(state.progress.total, 1);
+  elements.progress.value = completed;
+  elements["progress-text"].textContent = `${completed} / ${state.progress.total} 完了 · 残り${state.progress.pending}`;
+  elements["progress-detail"].textContent = `採用${state.progress.include} · 対象外${state.progress.exclude} · 保留${state.progress.needs_review} · 重複${state.progress.duplicate}`;
+}
+
+async function loadProgress() {
+  const hint = elements["screening-hint"].value;
+  const result = await api(`/api/review/v1/progress?screeningHint=${encodeURIComponent(hint)}`);
+  state.progress = result.data;
+  renderProgress();
+}
+
+async function loadQueue({ reset = false } = {}) {
+  if (state.loading) return;
+  state.loading = true;
+  if (reset) state.queue = [];
+  renderCandidate();
+  try {
+    const hint = elements["screening-hint"].value;
+    const result = await api(`/api/review/v1/queue?screeningHint=${encodeURIComponent(hint)}&limit=20`);
+    const existing = new Set(state.queue.map((candidate) => candidate.candidateKey));
+    result.data.forEach((candidate) => {
+      if (!existing.has(candidate.candidateKey)) state.queue.push(candidate);
+    });
+    elements["save-status"].textContent = "保存済み";
+  } finally {
+    state.loading = false;
+    renderCandidate();
+  }
+}
+
+async function loadReview() {
+  showApp();
+  elements["save-status"].textContent = "読込中…";
+  await Promise.all([loadProgress(), loadQueue({ reset: true })]);
+}
+
+function adjustProgress(previousStatus, decision) {
+  if (!state.progress) return;
+  if (previousStatus in state.progress) state.progress[previousStatus] -= 1;
+  state.progress[decision] += 1;
+  renderProgress();
+}
+
+async function saveDecision(decision, reason, duplicateOf) {
+  const reviewer = elements.reviewer.value.trim();
+  if (!reviewer) {
+    showToast("先にReviewer identifierを入力してください");
+    elements.reviewer.focus();
+    return;
+  }
+  const candidate = currentCandidate();
+  if (!candidate) return;
+  elements["save-status"].textContent = "保存中…";
+  disableDecisions(true);
+  try {
+    const result = await api("/api/review/v1/decisions", {
+      method: "POST",
+      body: JSON.stringify({ candidateKey: candidate.candidateKey, decision, reason, reviewer, duplicateOf }),
+    });
+    state.lastSaved = { candidate: { ...candidate, reviewStatus: decision }, decision };
+    state.queue.shift();
+    elements["revise-last"].hidden = false;
+    adjustProgress(result.previousStatus, decision);
+    elements["save-status"].textContent = "保存済み";
+    showToast("判定を保存しました");
+    renderCandidate();
+    window.scrollTo({ top: 0, behavior: "auto" });
+    if (state.queue.length <= 5) await loadQueue();
+  } catch (error) {
+    elements["save-status"].textContent = "保存失敗";
+    showToast(error.message);
+    disableDecisions(false);
+  }
+}
+
+function duplicateOption(candidate) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "duplicate-option";
+  button.setAttribute("aria-pressed", String(state.duplicateTarget?.candidateKey === candidate.candidateKey));
+  button.append(text("strong", candidate.title));
+  button.append(text("span", [candidate.publicationYear, candidate.journal, candidate.candidateKey].filter(Boolean).join(" · ")));
+  button.addEventListener("click", () => {
+    state.duplicateTarget = candidate;
+    renderDuplicateResults([candidate]);
+  });
+  return button;
+}
+
+function renderDuplicateResults(candidates) {
+  if (!candidates.length) {
+    elements["duplicate-results"].replaceChildren(text("p", "同一タイトル候補はありません。識別子が分かる場合だけ検索してください。", "empty-duplicates"));
+  } else {
+    elements["duplicate-results"].replaceChildren(...candidates.map(duplicateOption));
+  }
+  elements["confirm-duplicate"].disabled = !state.duplicateTarget;
+}
+
+async function loadDuplicates(query = "") {
+  const candidate = currentCandidate();
+  if (!candidate) return;
+  state.duplicateTarget = null;
+  elements["duplicate-results"].replaceChildren(text("p", "検索中…", "empty-duplicates"));
+  elements["confirm-duplicate"].disabled = true;
+  const queryPart = query ? `&q=${encodeURIComponent(query)}` : "";
+  try {
+    const result = await api(`/api/review/v1/duplicates?candidateKey=${encodeURIComponent(candidate.candidateKey)}${queryPart}`);
+    renderDuplicateResults(result.data);
+  } catch (error) {
+    renderDuplicateResults([]);
+    showToast(error.message);
+  }
+}
+
+elements["login-form"].addEventListener("submit", async (event) => {
+  event.preventDefault();
+  elements["login-error"].hidden = true;
+  elements["save-status"].textContent = "認証中…";
+  try {
+    await api("/api/review/v1/session", {
+      method: "POST",
+      body: JSON.stringify({ token: elements["admin-token"].value }),
+    });
+    elements["admin-token"].value = "";
+    await loadReview();
+  } catch (error) {
+    showLogin(error.message);
+  }
+});
+
+elements.logout.addEventListener("click", async () => {
+  await api("/api/review/v1/session", { method: "DELETE" }).catch(() => {});
+  showLogin();
+});
+elements["export-csv"].addEventListener("click", () => {
+  const hint = encodeURIComponent(elements["screening-hint"].value);
+  location.assign(`/api/review/v1/export?screeningHint=${hint}`);
+});
+
+elements.reviewer.value = localStorage.getItem("candidate-reviewer") ?? "";
+const savedHint = localStorage.getItem("candidate-review-hint");
+if ([...elements["screening-hint"].options].some((option) => option.value === savedHint)) {
+  elements["screening-hint"].value = savedHint;
+}
+elements.reviewer.addEventListener("input", () => localStorage.setItem("candidate-reviewer", elements.reviewer.value.trim()));
+elements["screening-hint"].addEventListener("change", () => {
+  localStorage.setItem("candidate-review-hint", elements["screening-hint"].value);
+  state.lastSaved = null;
+  elements["revise-last"].hidden = true;
+  Promise.all([loadProgress(), loadQueue({ reset: true })]).catch((error) => showToast(error.message));
+});
+elements.skip.addEventListener("click", () => {
+  state.queue.push(state.queue.shift());
+  renderCandidate();
+  window.scrollTo({ top: 0, behavior: "auto" });
+});
+elements["revise-last"].addEventListener("click", () => {
+  if (!state.lastSaved) return;
+  state.queue.unshift(state.lastSaved.candidate);
+  state.lastSaved = null;
+  elements["revise-last"].hidden = true;
+  renderCandidate();
+  showToast("直前の候補を再表示しました");
+});
+elements.include.addEventListener("click", () => saveDecision("include", "分子状水素H₂の生物医学研究で、タイトルと書誌情報を原資料で確認。"));
+elements["needs-review"].addEventListener("click", () => saveDecision("needs_review", "metadataだけでは対象判定に必要な情報が不足。"));
+elements.exclude.addEventListener("click", () => elements["exclude-dialog"].showModal());
+elements.duplicate.addEventListener("click", () => {
+  elements["duplicate-query"].value = "";
+  elements["duplicate-dialog"].showModal();
+  loadDuplicates();
+});
+
+elements["exclude-dialog"].addEventListener("close", () => {
+  const selected = elements["exclude-dialog"].returnValue;
+  if (excludeReasons[selected]) saveDecision("exclude", excludeReasons[selected]);
+  else if (selected === "other") {
+    elements["reason-text"].value = "";
+    elements["reason-dialog"].showModal();
+  }
+});
+
+elements["reason-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const reason = elements["reason-text"].value.trim();
+  if (!reason) return;
+  elements["reason-dialog"].close();
+  saveDecision("exclude", reason);
+});
+
+elements["search-duplicate"].addEventListener("click", () => {
+  const query = elements["duplicate-query"].value.trim();
+  if (query) loadDuplicates(query);
+});
+elements["duplicate-query"].addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    elements["search-duplicate"].click();
+  }
+});
+elements["duplicate-form"].addEventListener("submit", (event) => {
+  if (event.submitter?.value !== "confirm") return;
+  event.preventDefault();
+  if (!state.duplicateTarget) return;
+  const target = state.duplicateTarget;
+  elements["duplicate-dialog"].close();
+  saveDecision("duplicate", "タイトルと書誌識別子を比較して同一報告と確認。", target.candidateKey);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
+  if (event.key.toLocaleLowerCase("en-US") === "i") elements.include.click();
+  else if (event.key.toLocaleLowerCase("en-US") === "e") elements.exclude.click();
+  else if (event.key.toLocaleLowerCase("en-US") === "n") elements["needs-review"].click();
+  else if (event.key.toLocaleLowerCase("en-US") === "d") elements.duplicate.click();
+});
+
+api("/api/review/v1/session")
+  .then(loadReview)
+  .catch((error) => {
+    if (error.status === 401) showLogin();
+    else showLogin(error.message);
+  });

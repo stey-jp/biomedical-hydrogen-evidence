@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Biomedical Hydrogen Evidenceの候補論文をスマートフォンから確認する管理画面です。">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>Candidate Review · Biomedical Hydrogen Evidence</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/css/review.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Private · Human review</p>
+      <h1>Candidate Review</h1>
+    </div>
+    <span id="save-status" class="save-status" role="status" aria-live="polite">接続中</span>
+  </header>
+
+  <main>
+    <section id="login-panel" class="login-panel" hidden>
+      <h2>レビューにログイン</h2>
+      <p>管理トークンはこの端末に保存されません。ログイン後は期限付きCookieを使用します。</p>
+      <form id="login-form">
+        <label class="visually-hidden">Username
+          <input type="text" value="review-admin" autocomplete="username" readonly tabindex="-1">
+        </label>
+        <label for="admin-token">管理トークン</label>
+        <input id="admin-token" type="password" minlength="32" maxlength="256" autocomplete="current-password" required>
+        <button type="submit" class="primary">ログイン</button>
+      </form>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <div id="review-app" hidden>
+      <section class="setup" aria-label="レビュー設定">
+        <label>対象キュー
+          <select id="screening-hint">
+            <option value="likely_biomedical">優先候補</option>
+            <option value="needs_review">要確認候補</option>
+            <option value="likely_non_biomedical">対象外の可能性</option>
+          </select>
+        </label>
+        <label>Reviewer identifier
+          <input id="reviewer" maxlength="200" autocomplete="name" placeholder="例：daiki">
+        </label>
+        <div class="setup-actions">
+          <button id="export-csv" type="button" class="text-button">CSV書き出し</button>
+          <button id="logout" type="button" class="text-button">ログアウト</button>
+        </div>
+      </section>
+
+      <section class="progress-panel" aria-label="進捗">
+        <div class="progress-copy">
+          <strong id="progress-text">0 / 0 完了</strong>
+          <span id="progress-detail">採用0 · 対象外0 · 保留0 · 重複0</span>
+        </div>
+        <progress id="progress" value="0" max="1"></progress>
+      </section>
+
+      <article id="candidate" class="candidate-card" aria-live="polite">
+        <p>候補を読み込んでいます…</p>
+      </article>
+
+      <nav class="record-nav" aria-label="候補の移動">
+        <button id="skip" type="button" class="secondary">あとで確認</button>
+        <span id="queue-status">読込中</span>
+        <button id="revise-last" type="button" class="secondary" hidden>直前を修正</button>
+      </nav>
+
+      <section class="decision-bar" aria-label="Screening判定">
+        <button id="include" type="button" class="decision include">採用</button>
+        <button id="exclude" type="button" class="decision exclude">対象外</button>
+        <button id="needs-review" type="button" class="decision needs-review">保留</button>
+        <button id="duplicate" type="button" class="decision duplicate">重複</button>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="exclude-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-heading">
+        <h2>対象外の理由</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <button value="not_h2" class="reason-option">分子状水素H₂を扱っていない</button>
+      <button value="non_biomedical" class="reason-option">植物・農業・食品保存など対象外</button>
+      <button value="industrial" class="reason-option">産業用水素・燃料電池・水素製造</button>
+      <button value="not_report" class="reason-option">研究結果を報告する文献ではない</button>
+      <button value="other" class="reason-option">その他（理由を入力）</button>
+    </form>
+  </dialog>
+
+  <dialog id="duplicate-dialog">
+    <form method="dialog" class="dialog-card" id="duplicate-form">
+      <div class="dialog-heading">
+        <h2>重複先を確認</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <p class="dialog-help">同一タイトル候補を自動表示します。なければcandidate key・DOI・PMID・PMCIDで検索できます。</p>
+      <div id="duplicate-results" class="duplicate-results" aria-live="polite"></div>
+      <div class="duplicate-search">
+        <label>識別子で検索
+          <input id="duplicate-query" maxlength="240" autocomplete="off" placeholder="doi:10.… または PMID">
+        </label>
+        <button id="search-duplicate" type="button" class="secondary">検索</button>
+      </div>
+      <button id="confirm-duplicate" type="submit" value="confirm" class="primary-dialog" disabled>この候補との重複として保存</button>
+    </form>
+  </dialog>
+
+  <dialog id="reason-dialog">
+    <form method="dialog" class="dialog-card" id="reason-form">
+      <div class="dialog-heading">
+        <h2>対象外の理由</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <label>Reason
+        <textarea id="reason-text" maxlength="2000" rows="5" required></textarea>
+      </label>
+      <button type="submit" value="save" class="primary-dialog">保存</button>
+    </form>
+  </dialog>
+
+  <p id="toast" class="toast" role="alert" hidden></p>
+  <script type="module" src="/js/review.js"></script>
+</body>
+</html>
