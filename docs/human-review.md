@@ -32,7 +32,7 @@ npm run deploy
 - `要旨対訳`は候補の出版社と識別子に応じて取得元を振り分けます。Springer NatureまたはElsevierを判定できる場合は出版社公式API、PMCIDはEurope PMC、PMIDはPubMed、その他のDOIはCrossrefをそれぞれ優先し、未収録の場合は残りの取得元、OpenAlex要旨インデックス、OpenAIRE Research Graphへfallbackします。文単位で原文と日本語参考訳を並べ、要旨本文・要旨訳はD1へ保存せず、そのブラウザタブのmemoryだけで再利用します。利用条件にかかわらず原資料へのlinkを残します。
 - 掲載誌の`引用指標`はOpenAlex `2yr_mean_citedness`を表示します。これはClarivateの公式Journal Impact Factorではありません。誌名は無料のNLM Catalog（補助的にCrossref）でISSNへ解決し、OpenAlexのISSNと一致した場合だけ採用します。ISSNを解決できない場合は、完全誌名または各単語の前方一致で安全に略称を照合します。値がない場合は未収録と表示します。Cron Triggerは毎時、未収録または30日以上古い誌名をreview待ちの表示順で最大12件更新し、年・取得時刻・OpenAlex sourceをD1へ保持します。個別の外部APIエラーはその誌名だけを次回へ繰り越します。
 - 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。DeepL訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
-- `ブックマーク`はcandidateをreviewer identifierごとにD1へ保存します。`保存論文`から後日一覧表示、原資料表示、レビュー画面への再表示、解除、CSV書き出しができます。reviewerはtrim後の完全一致で分離され、同じidentifierを入力した認証済み管理者には同じ一覧が表示されます。
+- `ブックマーク`はcandidateをreviewer identifierごとにD1へ保存し、保存後のバックグラウンド処理でタイトルをDeepL翻訳してD1へcacheします。ブックマーク一覧では原文タイトルの直下に日本語訳を表示し、チェックした最大10件をまとめて小学生・中学生・高校生の3段階から選んだ口語訳にできます。原資料表示、レビュー画面への再表示、解除、CSV書き出しも可能です。reviewerはtrim後の完全一致で分離されます。
 - 判定を1件以上保存したreviewer identifierは、次回以降の入力候補リストに最終判定日の新しい順で表示されます。候補にない新しいidentifierも直接入力できます。
 
 各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。

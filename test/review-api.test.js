@@ -188,6 +188,7 @@ test("review repository scopes bookmarks by reviewer with bound statements", asy
   });
   assert.equal(prepared.length, 5);
   assert.match(prepared[0].sql, /WHERE b\.reviewer = \?/u);
+  assert.match(prepared[0].sql, /candidate_translations/u);
   assert.deepEqual(prepared[0].bindings, ["reviewer-1", 500]);
   assert.match(prepared[1].sql, /WHERE b\.reviewer = \? AND c\.candidate_key = \?/u);
   assert.deepEqual(prepared[1].bindings, ["reviewer-1", candidate.candidate_key]);
@@ -431,66 +432,71 @@ test("review translation API returns a stable code when DeepL is unavailable", a
   assert.equal((await response.json()).error.code, "translation_disabled");
 });
 
-test("review social post API is authenticated, same-origin, and forwards bounded prompt options", async () => {
+test("review colloquial API batches selected bookmarks with one fixed reading level", async () => {
   const { cookie } = await loginCookie();
   let submitted;
-  const socialPostService = {
+  const colloquialService = {
     async generate(input) {
       submitted = input;
       return {
-        candidateKey: input.candidateKey,
-        format: input.format,
-        titleJa: "分子状水素候補",
-        summaryJa: "日本語要約",
-        socialPost: "SNS投稿",
+        level: input.level,
+        items: [{
+          candidateKey: input.candidateKeys[0],
+          titleJa: "分子状水素候補",
+          colloquialText: "中学生向けの口語訳",
+        }],
         provider: "OpenAI",
         model: "test-model",
       };
     },
   };
   const headers = { cookie, origin: "https://example.test", "content-type": "application/json" };
-  const response = await handleReview(request("/api/review/v1/social-posts", {
+  const response = await handleReview(request("/api/review/v1/colloquial-translations", {
     method: "POST",
     headers,
     body: JSON.stringify({
-      candidateKey: candidate.candidate_key,
+      candidateKeys: [candidate.candidate_key],
       reviewer: "reviewer-1",
-      format: "x",
-      customInstruction: "  限界を明確にする。  ",
+      level: "junior_high",
     }),
-  }), { REVIEW_ADMIN_TOKEN: secret }, { socialPostService, repository: {}, now: () => now });
+  }), { REVIEW_ADMIN_TOKEN: secret }, { colloquialService, repository: {}, now: () => now });
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.equal(body.data.socialPost, "SNS投稿");
+  assert.equal(body.data.items[0].colloquialText, "中学生向けの口語訳");
   assert.deepEqual(submitted, {
-    candidateKey: candidate.candidate_key,
+    candidateKeys: [candidate.candidate_key],
     reviewer: "reviewer-1",
-    format: "x",
-    customInstruction: "限界を明確にする。",
+    level: "junior_high",
   });
 
-  const crossOrigin = await handleReview(request("/api/review/v1/social-posts", {
+  const crossOrigin = await handleReview(request("/api/review/v1/colloquial-translations", {
     method: "POST",
     headers: { ...headers, origin: "https://evil.example" },
     body: JSON.stringify({
-      candidateKey: candidate.candidate_key,
+      candidateKeys: [candidate.candidate_key],
       reviewer: "reviewer-1",
-      format: "x",
+      level: "junior_high",
     }),
-  }), { REVIEW_ADMIN_TOKEN: secret }, { socialPostService, repository: {}, now: () => now });
+  }), { REVIEW_ADMIN_TOKEN: secret }, { colloquialService, repository: {}, now: () => now });
   assert.equal(crossOrigin.status, 403);
 });
 
 test("review bookmark API saves, lists, and exports reviewer-scoped candidates", async () => {
   const { cookie } = await loginCookie();
   const saved = [];
+  const translated = [];
+  const background = [];
   const bookmarkedAt = "2026-08-11T05:00:00.000Z";
   const repository = {
     async getCandidate(key) { return key === candidate.candidate_key ? candidate : null; },
     async getBookmarks(reviewer) {
       assert.equal(reviewer, "reviewer-1");
-      return [{ ...candidate, bookmarked_at: bookmarkedAt }];
+      return [{
+        ...candidate,
+        translated_title: "分子状水素の候補論文",
+        bookmarked_at: bookmarkedAt,
+      }];
     },
     async getBookmarksForExport(reviewer) {
       assert.equal(reviewer, "reviewer-1");
@@ -518,6 +524,7 @@ test("review bookmark API saves, lists, and exports reviewer-scoped candidates",
   assert.equal(list.status, 200);
   assert.equal(listBody.data[0].candidateKey, candidate.candidate_key);
   assert.equal(listBody.data[0].bookmarkedAt, bookmarkedAt);
+  assert.equal(listBody.data[0].titleJa, "分子状水素の候補論文");
 
   const save = await handleReview(request("/api/review/v1/bookmarks", {
     method: "POST",
@@ -527,7 +534,19 @@ test("review bookmark API saves, lists, and exports reviewer-scoped candidates",
       reviewer: "reviewer-1",
       bookmarked: true,
     }),
-  }), { REVIEW_ADMIN_TOKEN: secret }, { repository, now: () => Date.parse(bookmarkedAt) });
+  }), { REVIEW_ADMIN_TOKEN: secret }, {
+    repository,
+    now: () => Date.parse(bookmarkedAt),
+    translationService: {
+      async translateTitles(candidateKeys) {
+        translated.push(candidateKeys);
+        return [];
+      },
+    },
+    executionContext: {
+      waitUntil(promise) { background.push(promise); },
+    },
+  });
   assert.equal(save.status, 200);
   assert.equal((await save.json()).bookmarked, true);
   assert.deepEqual(saved, [{
@@ -536,6 +555,8 @@ test("review bookmark API saves, lists, and exports reviewer-scoped candidates",
     bookmarked: true,
     createdAt: bookmarkedAt,
   }]);
+  await Promise.all(background);
+  assert.deepEqual(translated, [[candidate.candidate_key]]);
 
   const exported = await handleReview(request("/api/review/v1/bookmarks/export?reviewer=reviewer-1", {
     headers: { cookie },

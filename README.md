@@ -110,7 +110,7 @@ Schemaは[docs/openapi.yaml](docs/openapi.yaml)を参照してください。
 
 ## AI cost model
 
-公開Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthropic、Gemini、Workers AI、その他LLM APIを呼びません。非公開review UIだけは、認証済みユーザーがブックマーク論文の「日本語SNS投稿を作る」を明示実行した場合に限り、取得した抄録からOpenAI Responses APIを1回呼びます。モデルは`gpt-5.6-luna`、推論強度は`max`です。DeepLは忠実なタイトル・要旨対訳、OpenAIは日本語要約・SNS下書きに役割を分け、両APIを同じ操作で直列実行しません。公開extraction endpointはありません。
+公開Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthropic、Gemini、Workers AI、その他LLM APIを呼びません。非公開review UIだけは、認証済みユーザーがチェックしたブックマーク論文の「口語訳を生成」を明示実行した場合に限り、取得した抄録をまとめてOpenAI Responses APIへ送ります。モデルは`gpt-5.6-luna`、推論強度は`max`です。DeepLはブックマーク保存時にタイトルをバックグラウンド翻訳してD1へcacheし、OpenAIは選択した読解レベルの口語訳を作成します。公開extraction endpointはありません。
 
 ## Data sources
 

@@ -7,7 +7,7 @@ import {
   verifyReviewSession,
 } from "../review/auth.js";
 import { createReviewRepository, reviewHints } from "../repositories/review.js";
-import { createReviewSocialPostService, ReviewSocialPostError } from "../services/review-social-posts.js";
+import { createReviewColloquialService, ReviewColloquialError } from "../services/review-colloquial.js";
 import { createReviewTranslationService, ReviewTranslationError } from "../services/review-translations.js";
 import { createDeepLClient } from "../translation/deepl.js";
 import { errorResponse, jsonResponse } from "../utils/responses.js";
@@ -50,7 +50,7 @@ function reviewCsv(rows) {
 function bookmarkCsv(rows) {
   const columns = [
     "bookmarked_at", "reviewer", "candidate_key", "review_status", "screening_hint",
-    "title", "publication_year", "journal", "doi", "pmid", "pmcid", "source_url",
+    "title", "translated_title", "publication_year", "journal", "doi", "pmid", "pmcid", "source_url",
   ];
   return [
     columns.map(csvCell).join(","),
@@ -95,14 +95,6 @@ function cleanText(value, field, maxLength) {
   return text;
 }
 
-function optionalText(value, field, maxLength) {
-  if (value == null || value === "") return "";
-  if (typeof value !== "string") throw new TypeError(`${field} must be a string`);
-  const text = value.trim();
-  if (text.length > maxLength) throw new RangeError(`${field} must contain at most ${maxLength} characters`);
-  return text;
-}
-
 function screeningHint(value) {
   return reviewHints.includes(value) ? value : "likely_biomedical";
 }
@@ -130,6 +122,7 @@ function candidateView(row) {
   return {
     candidateKey: row.candidate_key,
     title: row.title,
+    titleJa: row.translated_title ?? null,
     doi: row.doi,
     pmid: row.pmid,
     pmcid: row.pmcid,
@@ -278,7 +271,14 @@ async function saveDecision(request, repository, options) {
   });
 }
 
-async function saveBookmark(request, repository, now) {
+function runInBackground(promise, executionContext) {
+  const guarded = promise.catch((error) => {
+    console.error("Bookmark title translation failed", error instanceof Error ? error.name : "unknown");
+  });
+  if (typeof executionContext?.waitUntil === "function") executionContext.waitUntil(guarded);
+}
+
+async function saveBookmark(request, repository, options) {
   if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
   let body;
   try {
@@ -292,13 +292,19 @@ async function saveBookmark(request, repository, now) {
   if (!await repository.getCandidate(body.candidateKey)) {
     return securedError(request, 404, "candidate_not_found", "Candidate not found.");
   }
-  const createdAt = new Date(now()).toISOString();
+  const createdAt = new Date(options.now()).toISOString();
   await repository.setBookmark({
     candidateKey: body.candidateKey,
     reviewer: body.reviewer,
     bookmarked: body.bookmarked,
     createdAt,
   });
+  if (body.bookmarked && typeof options.executionContext?.waitUntil === "function") {
+    runInBackground(
+      options.titleTranslationService.translateTitles([body.candidateKey]),
+      options.executionContext,
+    );
+  }
   return securedJson(request, {
     saved: true,
     candidateKey: body.candidateKey,
@@ -323,8 +329,8 @@ function translationService(env, repository, options, now) {
   });
 }
 
-function socialPostService(env, repository, options, now) {
-  return options.socialPostService ?? createReviewSocialPostService({
+function colloquialService(env, repository, options, now) {
+  return options.colloquialService ?? createReviewColloquialService({
     repository,
     openAIApiKey: env.OPENAI_REVIEW_API_KEY,
     openAIModel: env.OPENAI_REVIEW_MODEL || "gpt-5.6-luna",
@@ -378,16 +384,20 @@ async function translateAbstract(request, service) {
   }
 }
 
-async function generateSocialPost(request, service) {
+async function generateColloquialTranslations(request, service) {
   if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
   let input;
   try {
     const body = await jsonBody(request);
+    if (!Array.isArray(body.candidateKeys) || !body.candidateKeys.length || body.candidateKeys.length > 10) {
+      throw new RangeError("candidateKeys must contain 1–10 items");
+    }
+    const candidateKeys = body.candidateKeys.map((key) => cleanText(key, "candidateKey", 240));
+    if (new Set(candidateKeys).size !== candidateKeys.length) throw new RangeError("candidateKeys must be unique");
     input = {
-      candidateKey: cleanText(body.candidateKey, "candidateKey", 240),
+      candidateKeys,
       reviewer: cleanText(body.reviewer, "reviewer", 200),
-      format: cleanText(body.format, "format", 20),
-      customInstruction: optionalText(body.customInstruction, "customInstruction", 2000),
+      level: cleanText(body.level, "level", 20),
     };
   } catch (error) {
     return securedError(request, 400, "invalid_request", error.message);
@@ -395,7 +405,7 @@ async function generateSocialPost(request, service) {
   try {
     return securedJson(request, { data: await service.generate(input) });
   } catch (error) {
-    if (error instanceof ReviewSocialPostError) {
+    if (error instanceof ReviewColloquialError) {
       return securedError(request, error.status, error.code, error.message);
     }
     throw error;
@@ -471,7 +481,11 @@ export async function handleReview(request, env, options = {}) {
     return csvResponse(bookmarkCsv(await repository.getBookmarksForExport(reviewer)), "candidate-bookmarks.csv");
   }
   if (url.pathname === "/api/review/v1/bookmarks" && request.method === "POST") {
-    return saveBookmark(request, repository, now);
+    return saveBookmark(request, repository, {
+      now,
+      executionContext: options.executionContext,
+      titleTranslationService: translationService(env, repository, options, now),
+    });
   }
   if (url.pathname === "/api/review/v1/translations/titles" && request.method === "POST") {
     return translateTitles(request, translationService(env, repository, options, now));
@@ -479,8 +493,8 @@ export async function handleReview(request, env, options = {}) {
   if (url.pathname === "/api/review/v1/translations/abstract" && request.method === "POST") {
     return translateAbstract(request, translationService(env, repository, options, now));
   }
-  if (url.pathname === "/api/review/v1/social-posts" && request.method === "POST") {
-    return generateSocialPost(request, socialPostService(env, repository, options, now));
+  if (url.pathname === "/api/review/v1/colloquial-translations" && request.method === "POST") {
+    return generateColloquialTranslations(request, colloquialService(env, repository, options, now));
   }
   if (url.pathname === "/api/review/v1/duplicates" && request.method === "GET") {
     const candidateKey = url.searchParams.get("candidateKey")?.trim();

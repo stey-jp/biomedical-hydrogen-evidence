@@ -15,7 +15,7 @@ Cloudflare Worker
 ├─ /healthz ──┘
 └─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + reviewer bookmarks + title translation cache
                      ├─ DeepL API Free + Europe PMC / Crossref / publisher APIs / OpenAlex / OpenAIRE
-                     └─ OpenAI Responses API（明示操作の日本語要約・SNS下書き）
+                     └─ OpenAI Responses API（選択したブックマークの口語訳）
 
 iOS / Android ── HTTPS GET ──► first-party REST API
 ```
@@ -37,7 +37,7 @@ generated review manifest + D1 import SQL
 study_candidates (not public search) ── human screening ──► studies
 ```
 
-Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳・SNS下書きrouteも同じ認証・same-origin・rate limit境界内に置き、provider Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、外部sourceから取得した要旨、要旨訳、OpenAI生成結果は永続化しません。SNS下書きはブックマーク済み候補に限定し、ユーザーの明示操作1回につきOpenAI Responses APIを1回だけ呼びます。
+Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳・口語訳routeも同じ認証・same-origin・rate limit境界内に置き、provider Secretをブラウザへ渡しません。ブックマーク保存後はタイトル訳をバックグラウンド生成して原文hash付きでD1へcacheし、外部sourceから取得した要旨、要旨訳、OpenAI生成結果は永続化しません。口語訳はチェックしたブックマーク済み候補を1回のOpenAI Responses API呼び出しにまとめます。
 
 ```text
 authorized local source bundle

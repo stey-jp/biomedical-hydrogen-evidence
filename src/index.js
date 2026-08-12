@@ -104,7 +104,7 @@ export async function handleRequest(request, env, ctx = {}) {
   if (url.pathname.startsWith("/api/review/v1/")) {
     const limited = await enforceRateLimit(request, env.REVIEW_RATE_LIMITER, "review");
     if (limited) return limited;
-    return handleReview(request, env);
+    return handleReview(request, env, { executionContext: ctx });
   }
 
   if (url.pathname.startsWith("/api/v1/")) {

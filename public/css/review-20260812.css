@@ -274,6 +274,22 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 .options-fields,
 .options-actions { display: grid; gap: 10px; }
 .options-actions button { width: 100%; padding: 10px 12px; font-weight: 750; }
+.bookmark-count-button { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.count-badge {
+  display: inline-grid;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 0.45rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1;
+}
+.count-badge-light { min-width: 1.7rem; min-height: 1.7rem; background: rgb(255 255 255 / 22%); }
 .logout-button { color: var(--danger); }
 .reason-option { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); text-align: left; }
 .duplicate-results { display: grid; gap: 8px; max-height: 38vh; overflow: auto; }
@@ -308,37 +324,72 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 .abstract-notice { margin: 0; color: var(--muted); font-size: 0.72rem; }
 .bookmark-button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
 .bookmark-dialog { width: min(calc(100% - 18px), 680px); }
+.bookmark-toolbar { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 8px; }
+.bookmark-toolbar button { min-height: 46px; }
+.bookmark-toolbar .primary { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .bookmark-export { width: 100%; font-weight: 750; }
 .bookmark-results { display: grid; gap: 10px; }
 .bookmark-item { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
-.bookmark-item strong { line-height: 1.35; }
+.bookmark-selection { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 10px; cursor: pointer; }
+.bookmark-selection input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); }
+.bookmark-titles { display: grid; gap: 5px; min-width: 0; }
+.bookmark-title-original { line-height: 1.35; overflow-wrap: anywhere; }
+.bookmark-title-ja { color: var(--accent); font-size: 0.86rem; font-weight: 750; line-height: 1.45; overflow-wrap: anywhere; }
+.bookmark-title-ja.is-pending { color: var(--muted); font-weight: 600; }
 .bookmark-item-meta { color: var(--muted); font-size: 0.75rem; }
 .bookmark-item-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .bookmark-item-actions button,
 .bookmark-item-actions a { min-height: 42px; }
-.bookmark-social { grid-column: 1 / -1; }
 .bookmark-remove { border: 1px solid #d9aaa7; border-radius: 10px; background: #fff6f5; color: var(--danger); font-weight: 700; }
 .bookmark-item-actions .bookmark-remove { grid-column: 1 / -1; }
 
-.social-dialog { width: min(calc(100% - 18px), 680px); }
-.social-dialog-card { max-height: calc(100dvh - 18px); overflow: auto; }
-.social-source-title {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--accent-soft);
-  font-size: 0.86rem;
-  font-weight: 750;
-  line-height: 1.4;
+.colloquial-dialog { width: min(calc(100% - 18px), 720px); }
+.colloquial-dialog-card { max-height: calc(100dvh - 18px); overflow: auto; }
+.colloquial-sources,
+.colloquial-form,
+.colloquial-result,
+.colloquial-items { display: grid; gap: 12px; }
+.colloquial-source {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfb;
 }
-.social-form,
-.social-result { display: grid; gap: 12px; }
-.social-result {
+.colloquial-source-number {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 850;
+}
+.colloquial-source p { margin: 3px 0 10px; line-height: 1.45; }
+.colloquial-source p:last-child { margin-bottom: 0; }
+.colloquial-original { font-weight: 720; }
+.colloquial-deepl { color: var(--accent); font-weight: 750; }
+.level-picker { display: grid; gap: 8px; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.level-picker legend { padding: 0 5px; font-weight: 800; }
+.level-picker input[type="range"] { width: 100%; min-height: 32px; margin: 0; accent-color: var(--accent); cursor: grab; }
+.level-picker input[type="range"]:active { cursor: grabbing; }
+.level-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.level-picker output { justify-self: center; padding: 5px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.82rem; font-weight: 800; }
+.colloquial-result {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.social-result textarea[readonly] { background: #f8faf9; }
-.social-result .primary { width: 100%; }
+.colloquial-result-item { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.colloquial-result-item strong { line-height: 1.4; }
+.colloquial-result-item textarea[readonly] { background: #f8faf9; }
+.colloquial-result .primary { width: 100%; }
+
+@media (max-width: 480px) {
+  .bookmark-toolbar { grid-template-columns: 1fr; }
+}
 
 .toast {
   --toast-color: 24 35 29;

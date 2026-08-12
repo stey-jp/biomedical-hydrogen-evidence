@@ -39,6 +39,11 @@ const journalMetricJoin = `LEFT JOIN journal_metrics jm
       AND latest_jm.metric_value IS NOT NULL
   )`;
 
+const bookmarkTitleTranslationJoin = `LEFT JOIN candidate_translations bt
+  ON bt.candidate_id = c.id
+  AND bt.field_name = 'title'
+  AND bt.target_language = 'ja'`;
+
 const bookmarkedCandidateColumns = `
   c.id AS internal_id,
   c.candidate_key,
@@ -66,6 +71,7 @@ const bookmarkedCandidateColumns = `
   jm.source AS journal_metric_source,
   jm.source_url AS journal_metric_source_url,
   jm.refreshed_at AS journal_metric_refreshed_at,
+  bt.translated_text AS translated_title,
   b.created_at AS bookmarked_at`;
 
 export const reviewHints = ["likely_biomedical", "needs_review", "likely_non_biomedical"];
@@ -154,6 +160,7 @@ export function createReviewRepository(db) {
         FROM candidate_review_bookmarks b
         JOIN study_candidates c ON c.id = b.candidate_id
         ${journalMetricJoin}
+        ${bookmarkTitleTranslationJoin}
         WHERE b.reviewer = ?
         ORDER BY b.created_at DESC, b.candidate_id DESC
         LIMIT ?`).bind(reviewer, limit).all();
@@ -165,6 +172,7 @@ export function createReviewRepository(db) {
         FROM candidate_review_bookmarks b
         JOIN study_candidates c ON c.id = b.candidate_id
         ${journalMetricJoin}
+        ${bookmarkTitleTranslationJoin}
         WHERE b.reviewer = ? AND c.candidate_key = ?
         LIMIT 1`).bind(reviewer, candidateKey).first();
     },
@@ -177,6 +185,7 @@ export function createReviewRepository(db) {
           c.review_status,
           c.screening_hint,
           c.title,
+          bt.translated_text AS translated_title,
           c.publication_year,
           c.journal,
           c.doi,
@@ -185,6 +194,7 @@ export function createReviewRepository(db) {
           c.source_url
         FROM candidate_review_bookmarks b
         JOIN study_candidates c ON c.id = b.candidate_id
+        ${bookmarkTitleTranslationJoin}
         WHERE b.reviewer = ?
         ORDER BY b.created_at DESC, b.candidate_id DESC`).bind(reviewer).all();
       return result.results ?? [];

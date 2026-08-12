@@ -15,7 +15,7 @@ const forbidden = [
 
 const requiredReviewAiBoundaries = [
   /OPENAI_REVIEW_API_KEY/u,
-  /\/api\/review\/v1\/social-posts/u,
+  /\/api\/review\/v1\/colloquial-translations/u,
   /store:\s*(?:false|!1)/u,
 ];
 

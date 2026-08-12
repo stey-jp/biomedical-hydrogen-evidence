@@ -8,25 +8,28 @@ const state = {
   abstracts: new Map(),
   bookmarks: new Map(),
   bookmarkReviewer: "",
-  socialCandidate: null,
-  socialPosts: new Map(),
+  selectedBookmarks: new Set(),
+  colloquialCandidates: [],
+  colloquialResponses: new Map(),
+  colloquialResponse: null,
   reviewers: [],
   transitioning: false,
 };
 
 const elements = Object.fromEntries([
   "options-button", "options-dialog", "close-options", "login-panel", "login-form", "admin-token", "login-error",
-  "review-app", "review-status", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "progress-text",
+  "review-app", "review-status", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "bookmark-count", "progress-text",
   "progress-detail", "progress", "candidate", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "exclude-form", "duplicate-dialog", "duplicate-form", "duplicate-results",
   "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog", "close-reason",
   "reason-form", "reason-text", "toast",
   "abstract-dialog", "abstract-content", "close-abstract",
-  "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "close-bookmarks",
-  "social-dialog", "social-dialog-title", "social-source-title", "social-form", "social-format",
-  "social-instruction", "social-generate", "social-status", "social-result", "social-summary",
-  "social-post", "social-copy", "close-social",
+  "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "bookmark-generate",
+  "bookmark-selected-count", "close-bookmarks",
+  "colloquial-dialog", "colloquial-dialog-title", "colloquial-sources", "colloquial-form",
+  "colloquial-level", "colloquial-level-value", "colloquial-generate", "colloquial-status",
+  "colloquial-result", "colloquial-items", "colloquial-copy-all", "close-colloquial",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const excludeReasons = {
@@ -60,21 +63,27 @@ const abstractErrorMessages = {
   translation_provider_failed: "要旨は取得できましたが、翻訳に失敗しました。時間をおいて再試行してください。",
 };
 
-const socialErrorMessages = {
+const colloquialErrorMessages = {
   generation_disabled: "OPENAI_REVIEW_API_KEYの設定後に生成できます。",
   generation_rate_limited: "OpenAI APIの利用上限に達しました。時間をおいて再試行してください。",
   generation_timeout: "生成がタイムアウトしました。時間をおいて再試行してください。",
-  generation_refused: "この論文では投稿案を生成できませんでした。追加指示を見直してください。",
+  generation_refused: "選択した論文の口語訳を作成できませんでした。",
   generation_incomplete: "生成が完了しませんでした。もう一度お試しください。",
   generation_invalid_output: "生成結果の形式を確認できませんでした。もう一度お試しください。",
-  generation_provider_failed: "OpenAI APIで生成できませんでした。時間をおいて再試行してください。",
+  generation_provider_failed: "口語訳を作成できませんでした。時間をおいて再試行してください。",
+  invalid_selection: "口語訳にする論文を1〜10件選択してください。",
   bookmark_not_found: "この論文は現在のReviewerのブックマークにありません。",
   pubmed_abstract_missing: "PubMedには抄録が収録されていないため生成できません。",
   abstract_missing: "利用可能な抄録が収録されていないため生成できません。",
   abstract_fetch_failed: "抄録を取得できませんでした。時間をおいて再試行してください。",
 };
 
-const defaultSocialInstruction = "専門知識のない読者にも分かる表現にし、研究対象・方法・主要結果・限界を省かないでください。宣伝的な表現や効果の断定は避けてください。";
+const colloquialLevels = [
+  { value: "elementary", label: "小学生" },
+  { value: "junior_high", label: "中学生" },
+  { value: "high_school", label: "高校生" },
+];
+const maxColloquialSelection = 10;
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers);
@@ -249,7 +258,9 @@ function isBookmarked(candidateKey) {
 
 function updateBookmarkCount() {
   const count = state.bookmarkReviewer === reviewerValue() ? state.bookmarks.size : 0;
-  elements["show-bookmarks"].textContent = `保存論文 ${count}`;
+  elements["bookmark-count"].textContent = String(count);
+  elements["bookmark-count"].setAttribute("aria-label", `${count}件`);
+  elements["show-bookmarks"].setAttribute("aria-label", `ブックマーク ${count}件`);
 }
 
 function disableDecisions(disabled) {
@@ -455,17 +466,59 @@ async function showBookmarkedCandidate(candidate) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+function bookmarkJapaneseTitle(candidate) {
+  return candidate.titleJa || candidate.translatedTitle || "";
+}
+
+function updateBookmarkSelection() {
+  const selectedCount = state.selectedBookmarks.size;
+  elements["bookmark-summary"].textContent = `全 ${state.bookmarks.size}件 · 選択中 ${selectedCount}件`;
+  elements["bookmark-selected-count"].textContent = String(selectedCount);
+  elements["bookmark-selected-count"].setAttribute("aria-label", `${selectedCount}件選択`);
+  elements["bookmark-generate"].disabled = selectedCount === 0;
+}
+
 function bookmarkItem(candidate) {
   const item = document.createElement("article");
   item.className = "bookmark-item";
-  item.append(text("strong", candidate.title));
+
+  const selection = document.createElement("label");
+  selection.className = "bookmark-selection";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = state.selectedBookmarks.has(candidate.candidateKey);
+  checkbox.setAttribute("aria-label", `${candidate.title}を口語訳の対象に選択`);
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked && state.selectedBookmarks.size >= maxColloquialSelection) {
+      checkbox.checked = false;
+      showToast(`一度に選択できるのは${maxColloquialSelection}件までです`);
+      return;
+    }
+    if (checkbox.checked) state.selectedBookmarks.add(candidate.candidateKey);
+    else state.selectedBookmarks.delete(candidate.candidateKey);
+    updateBookmarkSelection();
+  });
+  const titles = document.createElement("span");
+  titles.className = "bookmark-titles";
+  const originalTitle = text("strong", candidate.title, "bookmark-title-original");
+  originalTitle.lang = candidate.language || "en";
+  const japaneseTitle = text(
+    "span",
+    bookmarkJapaneseTitle(candidate) || "日本語訳を準備中です…",
+    `bookmark-title-ja${bookmarkJapaneseTitle(candidate) ? "" : " is-pending"}`,
+  );
+  japaneseTitle.lang = "ja";
+  titles.append(originalTitle, japaneseTitle);
+  selection.append(checkbox, titles);
+  item.append(selection);
+
   const metadata = text(
     "span",
     [
       candidate.publicationYear,
       candidate.journal,
       candidate.journal ? journalMetricLabel(candidate) : null,
-      candidate.reviewStatus,
+      reviewStatusLabels[candidate.reviewStatus] || candidate.reviewStatus,
       candidate.candidateKey,
     ].filter(Boolean).join(" · "),
     "bookmark-item-meta",
@@ -477,14 +530,10 @@ function bookmarkItem(candidate) {
   actions.className = "bookmark-item-actions";
   const sourceUrl = bookmarkSourceUrl(candidate);
   if (sourceUrl) actions.append(sourceLink("原資料を開く", sourceUrl));
-  const show = text("button", "レビュー画面で表示", "secondary");
+  const show = text("button", "レビュー画面", "secondary");
   show.type = "button";
   show.addEventListener("click", () => showBookmarkedCandidate(candidate));
   actions.append(show);
-  const createPost = text("button", "日本語SNS投稿を作る", "primary bookmark-social");
-  createPost.type = "button";
-  createPost.addEventListener("click", () => openSocialPost(candidate));
-  actions.append(createPost);
   const remove = text("button", "ブックマーク解除", "bookmark-remove");
   remove.type = "button";
   remove.addEventListener("click", () => toggleBookmark(candidate, false));
@@ -494,11 +543,12 @@ function bookmarkItem(candidate) {
 }
 
 function renderBookmarks() {
-  const reviewer = reviewerValue();
-  elements["bookmark-summary"].textContent = `${reviewer} · ${state.bookmarks.size}件`;
+  const available = new Set(state.bookmarks.keys());
+  state.selectedBookmarks = new Set([...state.selectedBookmarks].filter((key) => available.has(key)));
+  updateBookmarkSelection();
   const candidates = [...state.bookmarks.values()];
   if (!candidates.length) {
-    elements["bookmark-results"].replaceChildren(text("p", "このreviewerの保存論文はありません。", "abstract-status"));
+    elements["bookmark-results"].replaceChildren(text("p", "このReviewerのブックマークはありません。", "abstract-status"));
     return;
   }
   elements["bookmark-results"].replaceChildren(...candidates.map(bookmarkItem));
@@ -508,6 +558,7 @@ async function loadBookmarks() {
   const reviewer = reviewerValue();
   if (!reviewer) {
     state.bookmarks.clear();
+    state.selectedBookmarks.clear();
     state.bookmarkReviewer = "";
     updateBookmarkCount();
     renderCandidate();
@@ -516,6 +567,7 @@ async function loadBookmarks() {
   const result = await api(`/api/review/v1/bookmarks?reviewer=${encodeURIComponent(reviewer)}`);
   if (reviewerValue() !== reviewer) return;
   state.bookmarks = new Map(result.data.map((candidate) => [candidate.candidateKey, candidate]));
+  state.selectedBookmarks = new Set([...state.selectedBookmarks].filter((key) => state.bookmarks.has(key)));
   state.bookmarkReviewer = reviewer;
   updateBookmarkCount();
   renderCandidate();
@@ -544,89 +596,172 @@ async function toggleBookmark(candidate, bookmarked) {
       await loadBookmarks();
       return;
     }
-    if (next) state.bookmarks.set(candidate.candidateKey, { ...candidate, bookmarkedAt: result.bookmarkedAt });
-    else state.bookmarks.delete(candidate.candidateKey);
+    if (next) {
+      state.bookmarks.set(candidate.candidateKey, {
+        ...candidate,
+        titleJa: candidate.titleJa || candidate.translatedTitle || null,
+        bookmarkedAt: result.bookmarkedAt,
+      });
+    } else {
+      state.bookmarks.delete(candidate.candidateKey);
+      state.selectedBookmarks.delete(candidate.candidateKey);
+    }
     state.bookmarkReviewer = reviewer;
     updateBookmarkCount();
     renderCandidate();
     if (elements["bookmark-dialog"].open) renderBookmarks();
-    showToast(next ? "論文をブックマークしました" : "ブックマークを解除しました");
+    showToast(next ? "ブックマークしました。日本語訳を準備します" : "ブックマークを解除しました");
   } catch (error) {
     showToast(error.message);
   }
 }
 
-function socialCacheKey(candidate) {
+function selectedColloquialLevel() {
+  return colloquialLevels[Number(elements["colloquial-level"].value)] ?? colloquialLevels[1];
+}
+
+function updateColloquialLevel() {
+  const level = selectedColloquialLevel();
+  elements["colloquial-level-value"].value = `${level.label}に分かる文章`;
+}
+
+function colloquialCacheKey(candidates) {
+  return `${selectedColloquialLevel().value}\u0000${candidates.map((candidate) => candidate.candidateKey).join("\u0000")}`;
+}
+
+function resetColloquialResult() {
+  state.colloquialResponse = null;
+  elements["colloquial-status"].hidden = true;
+  elements["colloquial-result"].hidden = true;
+}
+
+function renderColloquialSources(candidates) {
+  const sources = candidates.map((candidate, index) => {
+    const item = document.createElement("article");
+    item.className = "colloquial-source";
+    item.append(text("span", `${index + 1}`, "colloquial-source-number"));
+    const copy = document.createElement("div");
+    copy.append(text("span", "原文", "translation-label"));
+    const original = text("p", candidate.title, "colloquial-original");
+    original.lang = candidate.language || "en";
+    copy.append(original, text("span", "DeepL訳", "translation-label"));
+    const japanese = text("p", bookmarkJapaneseTitle(candidate) || "日本語訳を準備中です…", "colloquial-deepl");
+    japanese.lang = "ja";
+    copy.append(japanese);
+    item.append(copy);
+    return item;
+  });
+  elements["colloquial-sources"].replaceChildren(...sources);
+}
+
+function formatColloquialItem(item) {
   return [
-    candidate.candidateKey,
-    elements["social-format"].value,
-    elements["social-instruction"].value.trim(),
-  ].join("\u0000");
+    `【${item.titleJa || item.originalTitle}】`,
+    item.colloquialText,
+    item.sourceUrl ? `出典: ${item.sourceUrl}` : null,
+  ].filter(Boolean).join("\n\n");
 }
 
-function resetSocialResult() {
-  elements["social-status"].hidden = true;
-  elements["social-result"].hidden = true;
+async function copyText(value, successMessage) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const field = document.createElement("textarea");
+      field.value = value;
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.append(field);
+      field.select();
+      if (!document.execCommand("copy")) throw new Error("Copy failed");
+      field.remove();
+    }
+    showToast(successMessage, "include");
+  } catch {
+    showToast("コピーできませんでした。本文を選択してコピーしてください");
+  }
 }
 
-function renderSocialResult(result) {
-  elements["social-summary"].value = `【${result.titleJa}】\n\n${result.summaryJa}`;
-  elements["social-post"].value = result.socialPost;
-  elements["social-status"].textContent = `${result.provider} · ${result.model} · ${result.source || "抄録"}`;
-  elements["social-status"].hidden = false;
-  elements["social-result"].hidden = false;
+function renderColloquialResult(result) {
+  state.colloquialResponse = result;
+  const cards = result.items.map((item, index) => {
+    const card = document.createElement("article");
+    card.className = "colloquial-result-item";
+    card.append(text("strong", `${index + 1}. ${item.titleJa || item.originalTitle}`));
+    const output = document.createElement("textarea");
+    output.rows = 9;
+    output.readOnly = true;
+    output.value = formatColloquialItem(item);
+    const copy = text("button", "この口語訳をコピー", "secondary");
+    copy.type = "button";
+    copy.addEventListener("click", () => copyText(output.value, "口語訳をコピーしました"));
+    card.append(output, copy);
+    return card;
+  });
+  elements["colloquial-items"].replaceChildren(...cards);
+  elements["colloquial-status"].textContent = `${result.items.length}件の口語訳を作成しました · ${selectedColloquialLevel().label}`;
+  elements["colloquial-status"].hidden = false;
+  elements["colloquial-result"].hidden = false;
 }
 
-async function openSocialPost(candidate) {
-  state.socialCandidate = candidate;
+async function openColloquialTranslations() {
+  await loadBookmarks();
+  const candidates = [...state.selectedBookmarks]
+    .map((key) => state.bookmarks.get(key))
+    .filter(Boolean);
+  if (!candidates.length) {
+    showToast("口語訳にする論文を選択してください");
+    return;
+  }
+  state.colloquialCandidates = candidates;
   await closeDialog(elements["bookmark-dialog"]);
-  elements["social-source-title"].textContent = candidate.title;
-  resetSocialResult();
-  openDialog(elements["social-dialog"]);
-  const cached = state.socialPosts.get(socialCacheKey(candidate));
-  if (cached) renderSocialResult(cached);
+  renderColloquialSources(candidates);
+  resetColloquialResult();
+  updateColloquialLevel();
+  openDialog(elements["colloquial-dialog"]);
+  const cached = state.colloquialResponses.get(colloquialCacheKey(candidates));
+  if (cached) renderColloquialResult(cached);
 }
 
-async function generateSocialPost() {
-  const candidate = state.socialCandidate;
-  if (!candidate) return;
+async function generateColloquialTranslations() {
+  const candidates = state.colloquialCandidates;
+  if (!candidates.length) return;
   const reviewer = reviewerValue();
   if (!reviewer) {
-    elements["social-status"].textContent = "Reviewer identifierを入力してください。";
-    elements["social-status"].hidden = false;
+    elements["colloquial-status"].textContent = "Reviewer identifierを入力してください。";
+    elements["colloquial-status"].hidden = false;
     return;
   }
-  const cacheKey = socialCacheKey(candidate);
-  const cached = state.socialPosts.get(cacheKey);
+  const cacheKey = colloquialCacheKey(candidates);
+  const cached = state.colloquialResponses.get(cacheKey);
   if (cached) {
-    renderSocialResult(cached);
+    renderColloquialResult(cached);
     return;
   }
-  elements["social-result"].hidden = true;
-  elements["social-status"].textContent = "抄録を取得し、日本語要約とSNS投稿を生成しています…";
-  elements["social-status"].hidden = false;
-  elements["social-generate"].disabled = true;
-  const originalLabel = elements["social-generate"].textContent;
-  elements["social-generate"].textContent = "生成中…";
+  elements["colloquial-result"].hidden = true;
+  elements["colloquial-status"].textContent = `選択した${candidates.length}件の口語訳を作成しています…`;
+  elements["colloquial-status"].hidden = false;
+  elements["colloquial-generate"].disabled = true;
+  const originalLabel = elements["colloquial-generate"].textContent;
+  elements["colloquial-generate"].textContent = "作成中…";
   try {
-    const result = await api("/api/review/v1/social-posts", {
+    const result = await api("/api/review/v1/colloquial-translations", {
       method: "POST",
       body: JSON.stringify({
-        candidateKey: candidate.candidateKey,
+        candidateKeys: candidates.map((candidate) => candidate.candidateKey),
         reviewer,
-        format: elements["social-format"].value,
-        customInstruction: elements["social-instruction"].value.trim(),
+        level: selectedColloquialLevel().value,
       }),
     });
-    state.socialPosts.set(cacheKey, result.data);
-    renderSocialResult(result.data);
+    state.colloquialResponses.set(cacheKey, result.data);
+    renderColloquialResult(result.data);
   } catch (error) {
-    elements["social-status"].textContent = socialErrorMessages[error.code]
-      ?? "日本語要約・SNS投稿を生成できませんでした。時間をおいて再試行してください。";
-    elements["social-status"].hidden = false;
+    elements["colloquial-status"].textContent = colloquialErrorMessages[error.code]
+      ?? "口語訳を作成できませんでした。時間をおいて再試行してください。";
+    elements["colloquial-status"].hidden = false;
   } finally {
-    elements["social-generate"].disabled = false;
-    elements["social-generate"].textContent = originalLabel;
+    elements["colloquial-generate"].disabled = false;
+    elements["colloquial-generate"].textContent = originalLabel;
   }
 }
 
@@ -819,7 +954,7 @@ elements["export-csv"].addEventListener("click", () => {
 });
 elements["close-abstract"].addEventListener("click", () => closeDialog(elements["abstract-dialog"]));
 elements["close-bookmarks"].addEventListener("click", () => closeDialog(elements["bookmark-dialog"]));
-elements["close-social"].addEventListener("click", () => closeDialog(elements["social-dialog"]));
+elements["close-colloquial"].addEventListener("click", () => closeDialog(elements["colloquial-dialog"]));
 elements["close-reason"].addEventListener("click", () => closeDialog(elements["reason-dialog"]));
 elements["show-bookmarks"].addEventListener("click", async () => {
   if (!reviewerValue()) {
@@ -829,7 +964,7 @@ elements["show-bookmarks"].addEventListener("click", async () => {
   }
   await closeDialog(elements["options-dialog"]);
   openDialog(elements["bookmark-dialog"]);
-  elements["bookmark-results"].replaceChildren(text("p", "保存論文を読み込んでいます…", "abstract-status"));
+  elements["bookmark-results"].replaceChildren(text("p", "ブックマークを読み込んでいます…", "abstract-status"));
   try {
     await loadBookmarks();
     renderBookmarks();
@@ -842,36 +977,29 @@ elements["bookmark-export"].addEventListener("click", () => {
   if (!reviewer) return;
   location.assign(`/api/review/v1/bookmarks/export?reviewer=${encodeURIComponent(reviewer)}`);
 });
-elements["social-form"].addEventListener("submit", (event) => {
+elements["bookmark-generate"].addEventListener("click", openColloquialTranslations);
+elements["colloquial-form"].addEventListener("submit", (event) => {
   event.preventDefault();
-  localStorage.setItem("candidate-review-social-format", elements["social-format"].value);
-  localStorage.setItem("candidate-review-social-instruction", elements["social-instruction"].value);
-  generateSocialPost();
+  localStorage.setItem("candidate-review-colloquial-level", elements["colloquial-level"].value);
+  generateColloquialTranslations();
 });
-elements["social-format"].addEventListener("change", resetSocialResult);
-elements["social-instruction"].addEventListener("input", resetSocialResult);
-elements["social-copy"].addEventListener("click", async () => {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(elements["social-post"].value);
-    } else {
-      elements["social-post"].focus();
-      elements["social-post"].select();
-      if (!document.execCommand("copy")) throw new Error("Copy failed");
-    }
-    showToast("SNS投稿をコピーしました", "include");
-  } catch {
-    showToast("コピーできませんでした。投稿欄を選択してコピーしてください");
-  }
+elements["colloquial-level"].addEventListener("input", () => {
+  updateColloquialLevel();
+  resetColloquialResult();
+});
+elements["colloquial-copy-all"].addEventListener("click", () => {
+  if (!state.colloquialResponse) return;
+  const value = state.colloquialResponse.items.map(formatColloquialItem).join("\n\n---\n\n");
+  copyText(value, `${state.colloquialResponse.items.length}件の口語訳をコピーしました`);
 });
 
 elements.reviewer.value = localStorage.getItem("candidate-reviewer") ?? "";
-elements["social-instruction"].value = localStorage.getItem("candidate-review-social-instruction")
-  ?? defaultSocialInstruction;
-const savedSocialFormat = localStorage.getItem("candidate-review-social-format");
-if ([...elements["social-format"].options].some((option) => option.value === savedSocialFormat)) {
-  elements["social-format"].value = savedSocialFormat;
+const savedColloquialLevelValue = localStorage.getItem("candidate-review-colloquial-level");
+const savedColloquialLevel = savedColloquialLevelValue == null ? null : Number(savedColloquialLevelValue);
+if (Number.isInteger(savedColloquialLevel) && savedColloquialLevel >= 0 && savedColloquialLevel <= 2) {
+  elements["colloquial-level"].value = String(savedColloquialLevel);
 }
+updateColloquialLevel();
 const savedHint = localStorage.getItem("candidate-review-hint");
 if ([...elements["screening-hint"].options].some((option) => option.value === savedHint)) {
   elements["screening-hint"].value = savedHint;
