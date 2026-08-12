@@ -19,7 +19,7 @@ const state = {
 const elements = Object.fromEntries([
   "options-button", "options-dialog", "close-options", "login-panel", "login-form", "admin-token", "login-error",
   "review-app", "review-status", "screening-hint", "reviewer", "reviewer-history", "logout", "export-csv", "show-bookmarks", "bookmark-count", "progress-text",
-  "progress-detail", "progress", "candidate", "skip", "queue-status",
+  "progress-detail", "progress", "candidate", "previous", "skip", "queue-status",
   "revise-last", "include", "exclude", "needs-review", "duplicate",
   "exclude-dialog", "exclude-form", "duplicate-dialog", "duplicate-form", "duplicate-results",
   "duplicate-query", "search-duplicate", "confirm-duplicate", "reason-dialog", "close-reason",
@@ -28,7 +28,7 @@ const elements = Object.fromEntries([
   "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "bookmark-generate",
   "bookmark-selected-count", "close-bookmarks",
   "colloquial-dialog", "colloquial-dialog-title", "colloquial-sources", "colloquial-form",
-  "colloquial-level", "colloquial-level-value", "colloquial-generate", "colloquial-status",
+  "colloquial-level", "colloquial-generate", "colloquial-status",
   "colloquial-result", "colloquial-items", "colloquial-copy-all", "close-colloquial",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
@@ -152,10 +152,17 @@ function text(tag, value, className) {
 
 const dialogCloseStates = new WeakMap();
 
+function updateModalScrollLock() {
+  const locked = Boolean(document.querySelector("dialog[open]"));
+  document.documentElement.classList.toggle("modal-open", locked);
+  document.body.classList.toggle("modal-open", locked);
+}
+
 function openDialog(dialog) {
   dialog.returnValue = "";
   dialog.classList.remove("is-closing", "is-visible");
   dialog.showModal();
+  updateModalScrollLock();
   dialog.getBoundingClientRect();
   dialog.classList.add("is-visible");
   const focusTarget = dialog.querySelector(".dialog-card");
@@ -176,6 +183,7 @@ function closeDialog(dialog, returnValue = "cancel") {
       dialogCloseStates.delete(dialog);
       if (dialog.open) dialog.close(returnValue);
       dialog.classList.remove("is-closing");
+      updateModalScrollLock();
       resolve();
     }, 240);
   });
@@ -218,19 +226,13 @@ function reviewerValue() {
 }
 
 function renderReviewerOptions() {
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = state.reviewers.length ? "履歴から選択" : "履歴はまだありません";
   const options = state.reviewers.map((entry) => {
     const option = document.createElement("option");
     option.value = entry.reviewer;
-    option.textContent = `${entry.reviewer}（${entry.reviewCount}件 · 最終 ${entry.lastReviewedAt?.slice(0, 10) ?? "不明"}）`;
+    option.label = `${entry.reviewCount}件 · 最終 ${entry.lastReviewedAt?.slice(0, 10) ?? "不明"}`;
     return option;
   });
-  elements["reviewer-history"].replaceChildren(placeholder, ...options);
-  elements["reviewer-history"].value = state.reviewers.some((entry) => entry.reviewer === reviewerValue())
-    ? reviewerValue()
-    : "";
+  elements["reviewer-history"].replaceChildren(...options);
 }
 
 async function loadReviewers() {
@@ -268,7 +270,9 @@ function disableDecisions(disabled) {
 }
 
 function updateCandidateControls(candidate) {
-  elements.skip.disabled = state.transitioning || !candidate || state.queue.length < 2;
+  const navigationDisabled = state.transitioning || !candidate || state.queue.length < 2;
+  elements.previous.disabled = navigationDisabled;
+  elements.skip.disabled = navigationDisabled;
   disableDecisions(state.transitioning || !candidate);
   elements["needs-review"].textContent = candidate?.reviewStatus === "needs_review" ? "保留済み" : "保留";
   if (candidate?.reviewStatus === "needs_review") elements["needs-review"].disabled = true;
@@ -281,9 +285,44 @@ async function animateCandidate(phase, decision) {
   elements.candidate.classList.remove("is-sorting-in", "is-sorting-out");
   elements.candidate.getBoundingClientRect();
   elements.candidate.classList.add(className);
-  await Promise.allSettled(elements.candidate.getAnimations().map((animation) => animation.finished));
+  await new Promise((resolve) => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      window.clearTimeout(fallbackTimer);
+      elements.candidate.removeEventListener("animationend", finish);
+      resolve();
+    };
+    const fallbackTimer = window.setTimeout(finish, 360);
+    elements.candidate.addEventListener("animationend", finish, { once: true });
+  });
   elements.candidate.classList.remove(className);
   if (phase === "in") delete elements.candidate.dataset.sortDecision;
+}
+
+async function transitionCurrentCandidate(transition, updateQueue, loadWhenEmpty = false) {
+  await animateCandidate("out", transition);
+  await updateQueue();
+  if (state.queue.length) renderCandidate();
+  else if (loadWhenEmpty) await loadQueue();
+  window.scrollTo({ top: 0, behavior: "auto" });
+  if (currentCandidate()) await animateCandidate("in", transition);
+}
+
+async function moveCandidate(direction) {
+  if (state.transitioning || state.queue.length < 2) return;
+  state.transitioning = true;
+  updateCandidateControls(currentCandidate());
+  try {
+    await transitionCurrentCandidate(direction, () => {
+      if (direction === "previous") state.queue.unshift(state.queue.pop());
+      else state.queue.push(state.queue.shift());
+    });
+  } finally {
+    state.transitioning = false;
+    updateCandidateControls(currentCandidate());
+  }
 }
 
 function titleTranslation(candidate) {
@@ -581,7 +620,7 @@ async function ensureBookmarks(reviewer) {
 async function toggleBookmark(candidate, bookmarked) {
   const reviewer = reviewerValue();
   if (!reviewer) {
-    showToast("先にReviewer identifierを入力してください");
+    showToast("先にReviewerを入力してください");
     elements.reviewer.focus();
     return;
   }
@@ -622,7 +661,10 @@ function selectedColloquialLevel() {
 
 function updateColloquialLevel() {
   const level = selectedColloquialLevel();
-  elements["colloquial-level-value"].value = `${level.label}に分かる文章`;
+  const range = elements["colloquial-level"];
+  const trackPositions = ["11px", "50%", "calc(100% - 11px)"];
+  range.style.setProperty("--range-position", trackPositions[Number(range.value)] ?? "50%");
+  range.setAttribute("aria-valuetext", level.label);
 }
 
 function colloquialCacheKey(candidates) {
@@ -644,8 +686,8 @@ function renderColloquialSources(candidates) {
     copy.append(text("span", "原文", "translation-label"));
     const original = text("p", candidate.title, "colloquial-original");
     original.lang = candidate.language || "en";
-    copy.append(original, text("span", "DeepL訳", "translation-label"));
-    const japanese = text("p", bookmarkJapaneseTitle(candidate) || "日本語訳を準備中です…", "colloquial-deepl");
+    copy.append(original, text("span", "日本語参考訳", "translation-label"));
+    const japanese = text("p", bookmarkJapaneseTitle(candidate) || "日本語訳を準備中です…", "colloquial-ja");
     japanese.lang = "ja";
     copy.append(japanese);
     item.append(copy);
@@ -728,7 +770,7 @@ async function generateColloquialTranslations() {
   if (!candidates.length) return;
   const reviewer = reviewerValue();
   if (!reviewer) {
-    elements["colloquial-status"].textContent = "Reviewer identifierを入力してください。";
+    elements["colloquial-status"].textContent = "Reviewerを入力してください。";
     elements["colloquial-status"].hidden = false;
     return;
   }
@@ -851,7 +893,7 @@ function adjustProgress(previousStatus, decision) {
 async function saveDecision(decision, reason, duplicateOf) {
   const reviewer = elements.reviewer.value.trim();
   if (!reviewer) {
-    showToast("先にReviewer identifierを入力してください");
+    showToast("先にReviewerを入力してください");
     elements.reviewer.focus();
     return;
   }
@@ -870,12 +912,7 @@ async function saveDecision(decision, reason, duplicateOf) {
     rememberReviewer(reviewer, result.reviewedAt);
     const feedback = decisionToastFeedback[decision];
     showToast(feedback?.message ?? "判定を保存しました", feedback?.tone);
-    await animateCandidate("out", decision);
-    state.queue.shift();
-    if (state.queue.length) renderCandidate();
-    else await loadQueue();
-    window.scrollTo({ top: 0, behavior: "auto" });
-    if (currentCandidate()) await animateCandidate("in", decision);
+    await transitionCurrentCandidate(decision, () => state.queue.shift(), true);
     state.transitioning = false;
     updateCandidateControls(currentCandidate());
     if (state.queue.length <= 5) await loadQueue();
@@ -958,7 +995,7 @@ elements["close-colloquial"].addEventListener("click", () => closeDialog(element
 elements["close-reason"].addEventListener("click", () => closeDialog(elements["reason-dialog"]));
 elements["show-bookmarks"].addEventListener("click", async () => {
   if (!reviewerValue()) {
-    showToast("先にReviewer identifierを入力してください");
+    showToast("先にReviewerを入力してください");
     elements.reviewer.focus();
     return;
   }
@@ -1010,19 +1047,10 @@ if ([...elements["review-status"].options].some((option) => option.value === sav
 }
 elements.reviewer.addEventListener("input", () => {
   localStorage.setItem("candidate-reviewer", reviewerValue());
-  elements["reviewer-history"].value = state.reviewers.some((entry) => entry.reviewer === reviewerValue())
-    ? reviewerValue()
-    : "";
   updateBookmarkCount();
   renderCandidate();
 });
 elements.reviewer.addEventListener("change", () => loadBookmarks().catch((error) => showToast(error.message)));
-elements["reviewer-history"].addEventListener("change", () => {
-  if (!elements["reviewer-history"].value) return;
-  elements.reviewer.value = elements["reviewer-history"].value;
-  elements.reviewer.dispatchEvent(new Event("input", { bubbles: true }));
-  loadBookmarks().catch((error) => showToast(error.message));
-});
 elements["screening-hint"].addEventListener("change", () => {
   localStorage.setItem("candidate-review-hint", elements["screening-hint"].value);
   state.lastSaved = null;
@@ -1035,11 +1063,8 @@ elements["review-status"].addEventListener("change", () => {
   elements["revise-last"].hidden = true;
   loadQueue({ reset: true }).catch((error) => showToast(error.message));
 });
-elements.skip.addEventListener("click", () => {
-  state.queue.push(state.queue.shift());
-  renderCandidate();
-  window.scrollTo({ top: 0, behavior: "auto" });
-});
+elements.previous.addEventListener("click", () => moveCandidate("previous"));
+elements.skip.addEventListener("click", () => moveCandidate("next"));
 elements["revise-last"].addEventListener("click", () => {
   if (!state.lastSaved) return;
   state.queue.unshift(state.lastSaved.candidate);
@@ -1058,6 +1083,7 @@ elements.duplicate.addEventListener("click", () => {
 });
 
 document.querySelectorAll("dialog").forEach((dialog) => {
+  dialog.addEventListener("close", updateModalScrollLock);
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeDialog(dialog);
@@ -1069,6 +1095,39 @@ document.querySelectorAll("dialog").forEach((dialog) => {
       && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
     if (!insideDialog) closeDialog(dialog);
   });
+});
+
+let candidateSwipe;
+elements.candidate.addEventListener("pointerdown", (event) => {
+  if (!event.isPrimary || event.button !== 0 || state.transitioning || state.queue.length < 2) return;
+  if (event.target instanceof Element && event.target.closest("a, button, input, select, textarea, label")) return;
+  candidateSwipe = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    startedAt: performance.now(),
+  };
+  if (typeof elements.candidate.setPointerCapture === "function") {
+    elements.candidate.setPointerCapture(event.pointerId);
+  }
+});
+elements.candidate.addEventListener("pointercancel", (event) => {
+  if (elements.candidate.hasPointerCapture?.(event.pointerId)) {
+    elements.candidate.releasePointerCapture(event.pointerId);
+  }
+  candidateSwipe = null;
+});
+elements.candidate.addEventListener("pointerup", (event) => {
+  if (!candidateSwipe || event.pointerId !== candidateSwipe.pointerId) return;
+  if (elements.candidate.hasPointerCapture?.(event.pointerId)) {
+    elements.candidate.releasePointerCapture(event.pointerId);
+  }
+  const deltaX = event.clientX - candidateSwipe.x;
+  const deltaY = event.clientY - candidateSwipe.y;
+  const elapsed = performance.now() - candidateSwipe.startedAt;
+  candidateSwipe = null;
+  if (elapsed > 800 || Math.abs(deltaX) < 56 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+  moveCandidate(deltaX > 0 ? "previous" : "next");
 });
 
 elements["exclude-form"].addEventListener("submit", (event) => {

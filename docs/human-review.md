@@ -27,13 +27,14 @@ npm run deploy
 - `採用`と`保留`は1 tap、`対象外`は定型理由を選ぶ2 tapです。
 - `重複`は同一正規化タイトルの候補を自動表示します。候補がなければcandidate key、DOI、PMID、PMCIDで検索し、重複先を特定できた場合だけ保存します。不確実なら`保留`にします。
 - 直前の判定は同じ画面で再表示して修正できます。修正も上書きではなく新しいreview eventとして残ります。
+- 論文カードは左右スワイプまたは「前の論文」「次の論文」で、判定を保存せずに前後移動できます。未判定・保留済み・採用済みの各表示状態で共通です。
 - `CSV書き出し`は選択中キューの判定済み行を、既存importに必要な`candidate_key`、`decision`、`reason`、`reviewer`を含むCSVとして保存します。
 - タイトルは英語原文の直下にDeepLの日本語参考訳を表示します。EN→JA用語集を初回に自動作成し、原文SHA-256、provider model、用語集version、翻訳時刻とともにD1へcacheします。タイトル変更時はhash不一致で再翻訳します。
 - `要旨対訳`は候補の出版社と識別子に応じて取得元を振り分けます。Springer NatureまたはElsevierを判定できる場合は出版社公式API、PMCIDはEurope PMC、PMIDはPubMed、その他のDOIはCrossrefをそれぞれ優先し、未収録の場合は残りの取得元、OpenAlex要旨インデックス、OpenAIRE Research Graphへfallbackします。文単位で原文と日本語参考訳を並べ、要旨本文・要旨訳はD1へ保存せず、そのブラウザタブのmemoryだけで再利用します。利用条件にかかわらず原資料へのlinkを残します。
 - 掲載誌の`引用指標`はOpenAlex `2yr_mean_citedness`を表示します。これはClarivateの公式Journal Impact Factorではありません。誌名は無料のNLM Catalog（補助的にCrossref）でISSNへ解決し、OpenAlexのISSNと一致した場合だけ採用します。ISSNを解決できない場合は、完全誌名または各単語の前方一致で安全に略称を照合します。値がない場合は未収録と表示します。Cron Triggerは毎時、未収録または30日以上古い誌名をreview待ちの表示順で最大12件更新し、年・取得時刻・OpenAlex sourceをD1へ保持します。個別の外部APIエラーはその誌名だけを次回へ繰り越します。
-- 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。DeepL訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
+- 翻訳は判断補助です。意味がずれる可能性があるため、採否・重複の最終判断では英語原文と原資料を優先します。日本語参考訳だけを根拠に自動判定・公開昇格・`human_verified`化しません。
 - `ブックマーク`はcandidateをreviewer identifierごとにD1へ保存し、保存後のバックグラウンド処理でタイトルをDeepL翻訳してD1へcacheします。ブックマーク一覧では原文タイトルの直下に日本語訳を表示し、チェックした最大10件をまとめて小学生・中学生・高校生の3段階から選んだ口語訳にできます。原資料表示、レビュー画面への再表示、解除、CSV書き出しも可能です。reviewerはtrim後の完全一致で分離されます。
-- 判定を1件以上保存したreviewer identifierは、次回以降の入力候補リストに最終判定日の新しい順で表示されます。候補にない新しいidentifierも直接入力できます。
+- Reviewer入力は履歴選択と新規identifier入力を1つに統合しています。判定を1件以上保存したidentifierは、次回以降の入力候補リストに最終判定日の新しい順で表示され、候補にないidentifierも同じ欄へ直接入力できます。
 
 各判定は`human_review_batches`と`candidate_review_events`へ追記し、判定時に表示されたcandidate snapshotのSHA-256、reviewer、理由、時刻、変更前statusを記録します。`include`はcandidate screening状態だけを変更し、公開`studies`への昇格や`human_verified`化は行いません。
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  colloquialLevels,
   createReviewColloquialService,
   ReviewColloquialError,
 } from "../src/services/review-colloquial.js";
@@ -31,6 +32,14 @@ const candidates = [
     source_url: "https://example.test/article-2",
   },
 ];
+
+test("review colloquial levels keep the full concise-reading prompts", () => {
+  assert.deepEqual(Object.fromEntries(colloquialLevels), {
+    elementary: "小学生に分かる文章。要点だけをさらに絞って。",
+    junior_high: "中学生に分かる文章。要点だけをさらに絞って。",
+    high_school: "高校生に分かる文章。要点だけをさらに絞って。",
+  });
+});
 
 test("review colloquial service batches selected bookmarks in one structured OpenAI request", async () => {
   let openAIRequest;
@@ -102,7 +111,7 @@ test("review colloquial service batches selected bookmarks in one structured Ope
   assert.equal(openAIRequest.body.max_output_tokens, 16_000);
   assert.equal(openAIRequest.body.text.format.type, "json_schema");
   assert.equal(openAIRequest.body.text.format.strict, true);
-  assert.match(openAIRequest.body.input[1].content, /小学生に分かる文章/u);
+  assert.match(openAIRequest.body.input[1].content, /小学生に分かる文章。要点だけをさらに絞って。/u);
   assert.match(openAIRequest.body.input[1].content, /This is the synthetic abstract for 12345/u);
   assert.match(openAIRequest.body.input[1].content, /This is the synthetic abstract for 67890/u);
   assert.equal(result.items.length, 2);

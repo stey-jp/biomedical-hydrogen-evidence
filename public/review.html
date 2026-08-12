@@ -52,9 +52,10 @@
       </article>
 
       <nav class="record-nav" aria-label="候補の移動">
-        <button id="skip" type="button" class="secondary">あとで確認</button>
+        <button id="previous" type="button" class="secondary">前の論文</button>
         <span id="queue-status">読込中</span>
-        <button id="revise-last" type="button" class="secondary" hidden>直前を修正</button>
+        <button id="skip" type="button" class="secondary">次の論文</button>
+        <button id="revise-last" type="button" class="secondary" hidden>直前の判定を修正</button>
       </nav>
 
       <section class="decision-bar" aria-label="Screening判定">
@@ -87,13 +88,9 @@
             <option value="likely_non_biomedical">対象外の可能性</option>
           </select>
         </label>
-        <label>Reviewer履歴
-          <select id="reviewer-history">
-            <option value="">履歴を読み込んでいます…</option>
-          </select>
-        </label>
-        <label>Reviewer identifier
-          <input id="reviewer" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="新しいidentifierを入力">
+        <label>Reviewer
+          <input id="reviewer" list="reviewer-history" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="履歴から選択、または新規入力">
+          <datalist id="reviewer-history"></datalist>
         </label>
       </div>
       <div class="options-actions">
@@ -191,13 +188,12 @@
       <form id="colloquial-form" class="colloquial-form">
         <fieldset class="level-picker">
           <legend>口語訳レベル</legend>
-          <input id="colloquial-level" type="range" min="0" max="2" step="1" value="1" aria-describedby="colloquial-level-value">
+          <input id="colloquial-level" type="range" min="0" max="2" step="1" value="1" aria-label="口語訳レベル" aria-valuetext="中学生">
           <div class="level-labels" aria-hidden="true">
             <span>小学生</span>
             <span>中学生</span>
             <span>高校生</span>
           </div>
-          <output id="colloquial-level-value" for="colloquial-level">中学生</output>
         </fieldset>
         <button id="colloquial-generate" type="submit" class="primary-dialog">口語訳を作成</button>
       </form>

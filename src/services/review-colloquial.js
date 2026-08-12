@@ -4,9 +4,9 @@ import { fetchArticleAbstract } from "../translation/europe-pmc.js";
 const openAIResponsesEndpoint = "https://api.openai.com/v1/responses";
 
 export const colloquialLevels = new Map([
-  ["elementary", "小学生に分かる文章"],
-  ["junior_high", "中学生に分かる文章"],
-  ["high_school", "高校生に分かる文章"],
+  ["elementary", "小学生に分かる文章。要点だけをさらに絞って。"],
+  ["junior_high", "中学生に分かる文章。要点だけをさらに絞って。"],
+  ["high_school", "高校生に分かる文章。要点だけをさらに絞って。"],
 ]);
 
 const colloquialSchema = {
