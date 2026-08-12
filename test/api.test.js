@@ -8,6 +8,8 @@ const service = {
   async getStudy(publicId) { return { publicId }; },
   async getEvidence(publicId) { return { publicId, evidence: [] }; },
   async getFilters() { return { speciesTypes: ["human"] }; },
+  async listAuthors(input) { return { data: [{ publicId: "BHE-AUTHOR-1" }], query: input.query ?? "" }; },
+  async getAuthor(publicId) { return { publicId, name: "Synthetic Author" }; },
 };
 
 test("API search is read-only and does not emit wildcard CORS", async () => {
@@ -75,4 +77,11 @@ test("study and evidence routes use stable public IDs", async () => {
   const evidenceResponse = await handleApi(new Request("https://example.test/api/v1/studies/BHE-FIXTURE-0001/evidence"), service);
   assert.equal((await studyResponse.json()).data.publicId, "BHE-FIXTURE-0001");
   assert.deepEqual((await evidenceResponse.json()).data.evidence, []);
+});
+
+test("author directory routes list and retrieve authors by stable IDs", async () => {
+  const listResponse = await handleApi(new Request("https://example.test/api/v1/authors?query=Synthetic"), service);
+  const detailResponse = await handleApi(new Request("https://example.test/api/v1/authors/BHE-AUTHOR-1"), service);
+  assert.equal((await listResponse.json()).data[0].publicId, "BHE-AUTHOR-1");
+  assert.equal((await detailResponse.json()).data.name, "Synthetic Author");
 });

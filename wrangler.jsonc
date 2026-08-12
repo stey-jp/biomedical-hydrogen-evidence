@@ -15,6 +15,10 @@
       "/index.html",
       "/study",
       "/study.html",
+      "/authors",
+      "/authors.html",
+      "/author",
+      "/author.html",
       "/review",
       "/review/",
       "/review.html"

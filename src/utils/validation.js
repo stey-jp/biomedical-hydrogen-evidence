@@ -7,9 +7,10 @@ export class ValidationError extends Error {
 }
 
 export class NotFoundError extends Error {
-  constructor(message = "Study not found") {
+  constructor(message = "Study not found", code = "study_not_found") {
     super(message);
     this.name = "NotFoundError";
+    this.code = code;
   }
 }
 
@@ -57,4 +58,3 @@ export function validatePublicId(value) {
   }
   return publicId;
 }
-

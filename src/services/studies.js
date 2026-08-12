@@ -29,6 +29,7 @@ function mapSummary(row) {
     studyDesign: row.study_design,
     participantCount: row.participant_count,
     administrationRoutes: row.administration_routes?.split(",") ?? [],
+    authors: row.author_names?.split("\u001f") ?? [],
     verificationStatus: row.verification_status,
     recordKind: row.record_kind,
     fixtureNotice: row.fixture_notice,
@@ -43,6 +44,7 @@ function mapStudy(record) {
     bibliography: {
       title: study.title,
       authors: record.authors.map((author) => ({
+        publicId: author.public_id,
         name: author.display_name,
         orcid: author.orcid,
         order: author.author_order,
@@ -181,6 +183,9 @@ function validateSearchInput(input = {}) {
   const studyDesign = studyDesignRaw ? normalizeStructuredTerm(studyDesignRaw) : undefined;
   const conditionRaw = optionalText(input.condition, "condition", 120);
   const condition = conditionRaw ? normalizeStructuredTerm(conditionRaw) : undefined;
+  const authorId = input.authorId
+    ? validatePublicId(optionalText(input.authorId, "authorId", 80))
+    : undefined;
   const yearFrom = optionalInteger(input.yearFrom, "yearFrom", { min: 1800, max: 2200 });
   const yearTo = optionalInteger(input.yearTo, "yearTo", { min: 1800, max: 2200 });
   if (yearFrom && yearTo && yearFrom > yearTo) {
@@ -199,6 +204,7 @@ function validateSearchInput(input = {}) {
     studyDesign,
     administrationRoute,
     condition,
+    authorId,
     yearFrom,
     yearTo,
     humanVerifiedOnly,
@@ -257,10 +263,89 @@ export function createStudyServiceFromRepository(repository) {
         studyDesigns: filters.studyDesigns.map((item) => item.value),
         administrationRoutes: filters.administrationRoutes.map((item) => item.value),
         conditions: filters.conditions.map((item) => ({ value: item.value, label: item.label })),
+        authors: (filters.authors ?? []).map((item) => ({
+          value: item.value,
+          label: item.label,
+          studyCount: item.study_count,
+        })),
         publicationYear: {
           min: filters.years.year_min,
           max: filters.years.year_max,
         },
+      };
+    },
+
+    async listAuthors(input = {}) {
+      const query = optionalText(input.query, "query", 120) ?? "";
+      const limit = optionalInteger(input.limit, "limit", { min: 1, max: 100 }) ?? 50;
+      const authors = await repository.listAuthors({ query, limit });
+      return {
+        data: authors.map((author) => ({
+          publicId: author.public_id,
+          name: author.display_name,
+          nativeName: author.native_name,
+          orcid: author.orcid,
+          primaryAffiliation: author.primary_affiliation,
+          studyCount: author.study_count,
+        })),
+        query,
+        limit,
+      };
+    },
+
+    async getAuthor(publicIdInput) {
+      const publicId = validatePublicId(publicIdInput);
+      const record = await repository.getAuthorByPublicId(publicId);
+      if (!record) throw new NotFoundError("Author not found", "author_not_found");
+      const { author } = record;
+      return {
+        publicId: author.public_id,
+        name: author.display_name,
+        givenName: author.given_name,
+        familyName: author.family_name,
+        nativeName: author.native_name,
+        orcid: author.orcid,
+        profileUrl: author.profile_url,
+        affiliations: record.affiliations.map((item) => ({
+          name: item.name,
+          department: item.department,
+          roleTitle: item.role_title,
+          rorId: item.ror_id,
+          city: item.city,
+          region: item.region,
+          countryCode: item.country_code,
+          websiteUrl: item.website_url,
+          startYear: item.start_year,
+          endYear: item.end_year,
+          isCurrent: Boolean(item.is_current),
+          study: item.study_public_id ? {
+            publicId: item.study_public_id,
+            title: item.study_title,
+            publicationYear: item.publication_year,
+          } : null,
+          sourceUrl: item.source_url,
+          verificationStatus: item.verification_status,
+          verifiedAt: item.verified_at,
+        })),
+        contacts: record.contacts.map((item) => ({
+          type: item.contact_type,
+          label: item.label,
+          value: item.contact_value,
+          isPrimary: Boolean(item.is_primary),
+          sourceUrl: item.source_url,
+          verificationStatus: item.verification_status,
+          verifiedAt: item.verified_at,
+        })),
+        studies: record.studies.map((item) => ({
+          publicId: item.public_id,
+          title: item.title,
+          journal: item.journal,
+          publicationYear: item.publication_year,
+          verificationStatus: item.verification_status,
+          authorOrder: item.author_order,
+        })),
+        contactNotice: "公開された職務上の連絡先のみを、出典と確認状態付きで掲載します。",
+        updatedAt: author.updated_at,
       };
     },
   };

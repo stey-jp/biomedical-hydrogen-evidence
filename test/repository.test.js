@@ -11,6 +11,7 @@ test("search SQL uses bound parameters, FTS, filters, and a bounded limit", () =
     ftsQuery: '"inhalation"',
     speciesType: "human",
     administrationRoute: "inhalation",
+    authorId: "BHE-AUTHOR-000001",
     yearFrom: 2020,
     yearTo: 2026,
     humanVerifiedOnly: true,
@@ -18,8 +19,9 @@ test("search SQL uses bound parameters, FTS, filters, and a bounded limit", () =
   });
   assert.match(statement.sql, /study_search MATCH \?/u);
   assert.match(statement.sql, /route_filter\.administration_route = \?/u);
+  assert.match(statement.sql, /filter_author\.public_id = \?/u);
   assert.ok(!statement.sql.includes("inhalation"));
-  assert.deepEqual(statement.bindings, ['"inhalation"', "human", "inhalation", 2020, 2026, 11]);
+  assert.deepEqual(statement.bindings, ['"inhalation"', "human", "inhalation", "BHE-AUTHOR-000001", 2020, 2026, 11]);
 });
 
 test("repository binds search values and returns cursor pagination", async () => {
@@ -49,4 +51,3 @@ test("repository binds search values and returns cursor pagination", async () =>
   assert.deepEqual(decodeCursor(result.nextCursor), { publicationYear: 2024, internalId: 2 });
   assert.equal(captured.bindings.at(-1), 2);
 });
-

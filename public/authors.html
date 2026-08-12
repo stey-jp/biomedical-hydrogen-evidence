@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Biomedical Hydrogen Evidenceに収録された研究著者の所属・公開連絡先・研究一覧。">
+  <title>著者データベース · Biomedical Hydrogen Evidence</title>
+  <link rel="icon" type="image/png" href="/icons/apple-touch-icon-search.png">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">Biomedical Hydrogen Evidence</a>
+    <a href="/">研究を検索</a>
+  </header>
+  <main class="directory-main">
+    <section class="directory-intro" aria-labelledby="page-title">
+      <p class="eyebrow">Author directory</p>
+      <h1 id="page-title">著者データベース</h1>
+      <p class="lede">収録研究の著者を、所属・ORCID・公開された職務上の連絡先とともに確認できます。同姓同名は著者IDで区別します。</p>
+    </section>
+
+    <form id="author-search-form" class="search-panel directory-search" role="search">
+      <label class="search-label" for="author-query">著者名・ORCID</label>
+      <div class="search-row">
+        <input id="author-query" name="query" type="search" maxlength="120" placeholder="例：著者名またはORCID" autocomplete="off">
+        <button type="submit">検索</button>
+      </div>
+    </form>
+
+    <section aria-labelledby="authors-title">
+      <div class="results-heading">
+        <h2 id="authors-title">著者一覧</h2>
+        <p id="author-status" role="status" aria-live="polite">読み込み中…</p>
+      </div>
+      <div id="authors" class="result-list"></div>
+    </section>
+  </main>
+  <footer>
+    <p>連絡先は、出典を確認できる公開された職務上の情報のみ掲載します。</p>
+  </footer>
+  <script type="module" src="/js/authors.js"></script>
+</body>
+</html>

@@ -10,7 +10,17 @@ const SUMMARY_COLUMNS = `
   c.species_type,
   c.study_design,
   p.participant_count,
-  GROUP_CONCAT(DISTINCT i.administration_route) AS administration_routes
+  GROUP_CONCAT(DISTINCT i.administration_route) AS administration_routes,
+  (
+    SELECT GROUP_CONCAT(author_row.display_name, char(31))
+    FROM (
+      SELECT a.display_name
+      FROM study_authors summary_sa
+      JOIN authors a ON a.id = summary_sa.author_id
+      WHERE summary_sa.study_id = s.id
+      ORDER BY summary_sa.author_order
+    ) author_row
+  ) AS author_names
 `;
 
 function rows(result) {
@@ -67,6 +77,10 @@ export function buildSearchStatement(input) {
   if (input.condition) {
     conditions.push("p.condition_canonical = ?");
     bindings.push(input.condition);
+  }
+  if (input.authorId) {
+    conditions.push("EXISTS (SELECT 1 FROM study_authors author_filter JOIN authors filter_author ON filter_author.id = author_filter.author_id WHERE author_filter.study_id = s.id AND filter_author.public_id = ?)");
+    bindings.push(input.authorId);
   }
   if (input.yearFrom) {
     conditions.push("s.publication_year >= ?");
@@ -138,7 +152,7 @@ export function createStudiesRepository(db) {
 
       const id = study.internal_id;
       const statements = [
-        db.prepare(`SELECT a.display_name, a.orcid, sa.author_order
+        db.prepare(`SELECT a.public_id, a.display_name, a.orcid, sa.author_order
           FROM study_authors sa JOIN authors a ON a.id = sa.author_id
           WHERE sa.study_id = ? ORDER BY sa.author_order`).bind(id),
         db.prepare(`SELECT id, molecular_hydrogen, administration_route,
@@ -203,6 +217,13 @@ export function createStudiesRepository(db) {
         db.prepare("SELECT DISTINCT administration_route AS value FROM interventions ORDER BY value"),
         db.prepare("SELECT DISTINCT condition_canonical AS value, disease_or_condition AS label FROM populations WHERE condition_canonical IS NOT NULL ORDER BY value"),
         db.prepare("SELECT MIN(publication_year) AS year_min, MAX(publication_year) AS year_max FROM studies"),
+        db.prepare(`SELECT a.public_id AS value, a.display_name AS label, COUNT(DISTINCT sa.study_id) AS study_count
+          FROM authors a
+          JOIN study_authors sa ON sa.author_id = a.id
+          JOIN classifications c ON c.study_id = sa.study_id AND c.biomedical_relevance = 1
+          WHERE a.public_id IS NOT NULL
+          GROUP BY a.id
+          ORDER BY a.display_name COLLATE NOCASE, a.id`),
       ];
       const result = await runBatch(db, statements);
       return {
@@ -211,6 +232,88 @@ export function createStudiesRepository(db) {
         administrationRoutes: rows(result[2]),
         conditions: rows(result[3]),
         years: rows(result[4])[0] ?? { year_min: null, year_max: null },
+        authors: rows(result[5]),
+      };
+    },
+
+    async listAuthors(input) {
+      const conditions = ["a.public_id IS NOT NULL"];
+      const bindings = [];
+      if (input.query) {
+        conditions.push(`(
+          a.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR COALESCE(a.native_name, '') LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR COALESCE(a.orcid, '') LIKE ? ESCAPE '\\' COLLATE NOCASE
+        )`);
+        const pattern = `%${input.query.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+        bindings.push(pattern, pattern, pattern);
+      }
+      bindings.push(input.limit);
+      return rows(await db.prepare(`
+        SELECT
+          a.public_id, a.display_name, a.native_name, a.orcid,
+          COUNT(DISTINCT sa.study_id) AS study_count,
+          (
+            SELECT CASE
+              WHEN aa.department IS NULL THEN af.name
+              ELSE aa.department || ', ' || af.name
+            END
+            FROM author_affiliations aa
+            JOIN affiliations af ON af.id = aa.affiliation_id
+            WHERE aa.author_id = a.id
+            ORDER BY aa.is_current DESC, aa.id DESC
+            LIMIT 1
+          ) AS primary_affiliation
+        FROM authors a
+        LEFT JOIN study_authors sa ON sa.author_id = a.id
+        WHERE ${conditions.join(" AND ")}
+        GROUP BY a.id
+        ORDER BY a.display_name COLLATE NOCASE, a.id
+        LIMIT ?
+      `).bind(...bindings).all());
+    },
+
+    async getAuthorByPublicId(publicId) {
+      const author = await db.prepare(`
+        SELECT id AS internal_id, public_id, display_name, given_name, family_name, native_name,
+          orcid, profile_url, created_at, updated_at
+        FROM authors
+        WHERE public_id = ?
+      `).bind(publicId).first();
+      if (!author) return null;
+
+      const id = author.internal_id;
+      delete author.internal_id;
+      const statements = [
+        db.prepare(`SELECT
+            af.name, af.ror_id, af.city, af.region, af.country_code, af.website_url,
+            aa.department, aa.role_title, aa.start_year, aa.end_year, aa.is_current,
+            aa.source_url, aa.verification_status, aa.verified_at,
+            s.public_id AS study_public_id, s.title AS study_title, s.publication_year
+          FROM author_affiliations aa
+          JOIN affiliations af ON af.id = aa.affiliation_id
+          LEFT JOIN studies s ON s.id = aa.study_id
+          WHERE aa.author_id = ?
+          ORDER BY aa.is_current DESC, s.publication_year DESC, aa.id DESC`).bind(id),
+        db.prepare(`SELECT contact_type, label, contact_value, is_primary,
+            source_url, verification_status, verified_at
+          FROM author_contacts
+          WHERE author_id = ? AND is_public = 1
+          ORDER BY is_primary DESC, id`).bind(id),
+        db.prepare(`SELECT s.public_id, s.title, s.journal, s.publication_year,
+            s.verification_status, sa.author_order
+          FROM study_authors sa
+          JOIN studies s ON s.id = sa.study_id
+          JOIN classifications c ON c.study_id = s.id AND c.biomedical_relevance = 1
+          WHERE sa.author_id = ?
+          ORDER BY s.publication_year DESC, s.id DESC`).bind(id),
+      ];
+      const result = await runBatch(db, statements);
+      return {
+        author,
+        affiliations: rows(result[0]),
+        contacts: rows(result[1]),
+        studies: rows(result[2]),
       };
     },
   };

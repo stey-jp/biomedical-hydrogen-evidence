@@ -30,6 +30,7 @@ paths:
         - $ref: '#/components/parameters/StudyDesign'
         - $ref: '#/components/parameters/AdministrationRoute'
         - $ref: '#/components/parameters/Condition'
+        - $ref: '#/components/parameters/AuthorId'
         - $ref: '#/components/parameters/YearFrom'
         - $ref: '#/components/parameters/YearTo'
         - $ref: '#/components/parameters/HumanVerifiedOnly'
@@ -48,6 +49,7 @@ paths:
         - $ref: '#/components/parameters/StudyDesign'
         - $ref: '#/components/parameters/AdministrationRoute'
         - $ref: '#/components/parameters/Condition'
+        - $ref: '#/components/parameters/AuthorId'
         - $ref: '#/components/parameters/YearFrom'
         - $ref: '#/components/parameters/YearTo'
         - $ref: '#/components/parameters/HumanVerifiedOnly'
@@ -56,6 +58,45 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/SearchResults' }
         '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/authors:
+    get:
+      summary: List authors represented in the stored study database
+      parameters:
+        - $ref: '#/components/parameters/AuthorQuery'
+        - $ref: '#/components/parameters/AuthorLimit'
+      responses:
+        '200':
+          description: Authors ordered by display name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, query, limit]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuthorSummary' }
+                  query: { type: string }
+                  limit: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/authors/{authorId}:
+    get:
+      summary: Get an author with affiliations, public professional contacts, and studies
+      parameters:
+        - $ref: '#/components/parameters/AuthorIdPath'
+      responses:
+        '200':
+          description: Author detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthorDetail' }
+        '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /api/v1/studies/{publicId}:
     get:
@@ -130,6 +171,25 @@ components:
       name: condition
       in: query
       schema: { type: string, maxLength: 120 }
+    AuthorId:
+      name: authorId
+      in: query
+      description: Stable author ID returned by the author directory or filter metadata.
+      schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$', maxLength: 80 }
+    AuthorQuery:
+      name: query
+      in: query
+      description: Case-insensitive partial match against display name, native name, or ORCID.
+      schema: { type: string, maxLength: 120 }
+    AuthorLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    AuthorIdPath:
+      name: authorId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$', maxLength: 80 }
     YearFrom:
       name: yearFrom
       in: query
@@ -202,9 +262,53 @@ components:
         studyDesign: { type: string }
         participantCount: { type: [integer, 'null'] }
         administrationRoutes: { type: array, items: { type: string } }
+        authors: { type: array, items: { type: string } }
         verificationStatus: { type: string }
         recordKind: { type: string, enum: [published, fixture] }
         fixtureNotice: { type: [string, 'null'] }
+    AuthorSummary:
+      type: object
+      required: [publicId, name, studyCount]
+      properties:
+        publicId: { type: string }
+        name: { type: string }
+        nativeName: { type: [string, 'null'] }
+        orcid: { type: [string, 'null'] }
+        primaryAffiliation: { type: [string, 'null'] }
+        studyCount: { type: integer }
+    AuthorDetail:
+      type: object
+      description: Contact entries contain only source-attributed public professional contact points.
+      required: [publicId, name, affiliations, contacts, studies, contactNotice]
+      properties:
+        publicId: { type: string }
+        name: { type: string }
+        givenName: { type: [string, 'null'] }
+        familyName: { type: [string, 'null'] }
+        nativeName: { type: [string, 'null'] }
+        orcid: { type: [string, 'null'] }
+        profileUrl: { type: [string, 'null'] }
+        affiliations:
+          type: array
+          items: { type: object }
+        contacts:
+          type: array
+          items: { type: object }
+        studies:
+          type: array
+          items: { $ref: '#/components/schemas/AuthorStudy' }
+        contactNotice: { type: string }
+        updatedAt: { type: [string, 'null'], format: date-time }
+    AuthorStudy:
+      type: object
+      required: [publicId, title, publicationYear, verificationStatus, authorOrder]
+      properties:
+        publicId: { type: string }
+        title: { type: string }
+        journal: { type: [string, 'null'] }
+        publicationYear: { type: integer }
+        verificationStatus: { type: string }
+        authorOrder: { type: integer }
     StudyDetail:
       type: object
       required: [publicId, bibliography, classification, population, interventions, outcomes, verification]

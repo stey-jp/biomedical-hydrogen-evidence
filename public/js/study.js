@@ -37,9 +37,28 @@ function safeHttpUrl(value) {
 function facts(items) {
   const list = element("dl", { className: "facts" });
   items.forEach(([term, description]) => {
-    list.append(element("dt", { text: term }), element("dd", { text: label(description) }));
+    const detail = element("dd");
+    if (description instanceof Node) detail.append(description);
+    else detail.textContent = label(description);
+    list.append(element("dt", { text: term }), detail);
   });
   return list;
+}
+
+function authorLinks(authors) {
+  if (!authors.length) return document.createTextNode("未収録");
+  const content = document.createDocumentFragment();
+  authors.forEach((author, index) => {
+    if (index) content.append(document.createTextNode("、"));
+    if (!author.publicId) {
+      content.append(document.createTextNode(author.name));
+      return;
+    }
+    const link = element("a", { text: author.name });
+    link.href = `/author?id=${encodeURIComponent(author.publicId)}`;
+    content.append(link);
+  });
+  return content;
 }
 
 function section(title) {
@@ -67,7 +86,7 @@ function renderStudy(study, evidence) {
   const overview = section("研究概要");
   overview.append(facts([
     ["Public ID", study.publicId],
-    ["著者", study.bibliography.authors.map((author) => author.name).join(", ")],
+    ["著者", authorLinks(study.bibliography.authors)],
     ["掲載誌", study.bibliography.journal],
     ["公開日", study.bibliography.publicationDate],
     ["言語", study.bibliography.language],

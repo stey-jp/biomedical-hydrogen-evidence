@@ -51,6 +51,8 @@ function renderCard(study) {
   const routes = study.administrationRoutes.length
     ? `投与経路：${study.administrationRoutes.map(label).join("、")}`
     : "投与経路：未収録";
+  const authors = study.authors?.length ? `著者：${study.authors.join("、")}` : "著者：未収録";
+  article.append(element("p", { className: "result-meta", text: authors }));
   article.append(element("p", { className: "result-meta", text: `${population} · ${routes}` }));
   if (study.recordKind === "fixture") {
     article.append(element("p", { className: "fixture-notice", text: study.fixtureNotice }));
@@ -110,10 +112,23 @@ async function loadFilters() {
     fillSelect("#study-design", filters.studyDesigns);
     fillSelect("#administration-route", filters.administrationRoutes);
     fillSelect("#condition", filters.conditions, (item) => item.label ?? label(item.value));
+    fillSelect("#author", filters.authors, (item) => `${item.label}（${item.studyCount}件）`);
     document.querySelector("#year-from").placeholder = filters.publicationYear.min ?? "";
     document.querySelector("#year-to").placeholder = filters.publicationYear.max ?? "";
   } catch {
     // Filters are an enhancement; keyword search remains usable if metadata fails.
+  }
+}
+
+function restoreFiltersFromUrl() {
+  const params = new URL(location.href).searchParams;
+  for (const element of form.elements) {
+    if (!element.name || !params.has(element.name)) continue;
+    if (element.type === "checkbox") {
+      element.checked = ["true", "1"].includes(params.get(element.name));
+    } else {
+      element.value = params.get(element.name);
+    }
   }
 }
 
@@ -134,4 +149,5 @@ document.querySelectorAll(".example").forEach((button) => {
 loadMoreButton.addEventListener("click", () => search({ append: true }));
 
 await loadFilters();
+restoreFiltersFromUrl();
 await search();

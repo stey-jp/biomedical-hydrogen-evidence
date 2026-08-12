@@ -13,12 +13,28 @@ function searchInput(searchParams) {
     studyDesign: searchParams.get("studyDesign"),
     administrationRoute: searchParams.get("administrationRoute"),
     condition: searchParams.get("condition"),
+    authorId: searchParams.get("authorId"),
     yearFrom: searchParams.get("yearFrom"),
     yearTo: searchParams.get("yearTo"),
     humanVerifiedOnly: searchParams.get("humanVerifiedOnly"),
     limit: searchParams.get("limit"),
     cursor: searchParams.get("cursor"),
   };
+}
+
+function authorListInput(searchParams) {
+  return {
+    query: searchParams.get("query") ?? searchParams.get("q"),
+    limit: searchParams.get("limit"),
+  };
+}
+
+function decodedPathId(value, field = "publicId") {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new ValidationError(`${field} has invalid URL encoding`, field);
+  }
 }
 
 function withApiHeaders(response) {
@@ -38,17 +54,21 @@ export async function handleApi(request, service) {
     if (url.pathname === "/api/v1/search" || url.pathname === "/api/v1/studies") {
       const result = await service.searchStudies(searchInput(url.searchParams));
       response = jsonResponse(request, { ...result, notice: API_NOTICE });
+    } else if (url.pathname === "/api/v1/authors") {
+      const result = await service.listAuthors(authorListInput(url.searchParams));
+      response = jsonResponse(request, { ...result, notice: API_NOTICE });
     } else if (url.pathname === "/api/v1/meta/filters") {
       response = jsonResponse(request, { data: await service.getFilters(), notice: API_NOTICE });
     } else {
+      const authorMatch = /^\/api\/v1\/authors\/([^/]+?)$/u.exec(url.pathname);
+      if (authorMatch) {
+        const data = await service.getAuthor(decodedPathId(authorMatch[1], "authorId"));
+        response = jsonResponse(request, { data, notice: API_NOTICE });
+        return withApiHeaders(response);
+      }
       const match = /^\/api\/v1\/studies\/([^/]+?)(\/evidence)?$/u.exec(url.pathname);
       if (!match) return errorResponse(request, 404, "not_found", "API route not found.");
-      let publicId;
-      try {
-        publicId = decodeURIComponent(match[1]);
-      } catch {
-        throw new ValidationError("publicId has invalid URL encoding", "publicId");
-      }
+      const publicId = decodedPathId(match[1]);
       const data = match[2]
         ? await service.getEvidence(publicId)
         : await service.getStudy(publicId);
@@ -60,7 +80,7 @@ export async function handleApi(request, service) {
       return errorResponse(request, 400, "invalid_request", error.message, { field: error.field });
     }
     if (error instanceof NotFoundError) {
-      return errorResponse(request, 404, "study_not_found", error.message);
+      return errorResponse(request, 404, error.code, error.message);
     }
     throw error;
   }

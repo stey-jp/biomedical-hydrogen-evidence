@@ -119,7 +119,10 @@ export async function handleRequest(request, env, ctx = {}) {
     return handleMcp(request, env, ctx);
   }
 
-  if (["/", "/index.html", "/study", "/study.html"].includes(url.pathname)) {
+  if ([
+    "/", "/index.html", "/study", "/study.html",
+    "/authors", "/authors.html", "/author", "/author.html",
+  ].includes(url.pathname)) {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return errorResponse(request, 405, "method_not_allowed", "Method not allowed.");
     }

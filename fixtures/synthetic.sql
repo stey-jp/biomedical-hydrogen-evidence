@@ -9,12 +9,38 @@ INSERT INTO studies (
   (2, 'BHE-FIXTURE-0002', '[Synthetic fixture] Hydrogen-rich water in a fictional animal model', 'Synthetic Fixture Journal', 2023, '2023-06-20', 'en', 'fixture', 'Synthetic fixture — test only; not a real biomedical study.', 'machine_checked'),
   (3, 'BHE-FIXTURE-0003', '[Synthetic fixture] Molecular hydrogen exposure in cultured cells', 'Synthetic Fixture Journal', 2022, '2022-11-01', 'en', 'fixture', 'Synthetic fixture — test only; not a real biomedical study.', 'needs_human_review');
 
-INSERT INTO authors (id, display_name) VALUES
-  (1, 'Synthetic Author A'),
-  (2, 'Synthetic Author B');
+INSERT INTO authors (
+  id, public_id, display_name, given_name, family_name, native_name, orcid,
+  profile_url, created_at, updated_at
+) VALUES
+  (1, 'BHE-AUTHOR-FIXTURE-0001', 'Synthetic Author A', 'Synthetic', 'Author A', NULL, '0000-0001-0000-0001', 'https://example.test/authors/1', '2026-08-12T00:00:00.000Z', '2026-08-12T00:00:00.000Z'),
+  (2, 'BHE-AUTHOR-FIXTURE-0002', 'Synthetic Author B', 'Synthetic', 'Author B', NULL, '0000-0001-0000-0002', 'https://example.test/authors/2', '2026-08-12T00:00:00.000Z', '2026-08-12T00:00:00.000Z');
 
 INSERT INTO study_authors (study_id, author_id, author_order) VALUES
   (1, 1, 1), (1, 2, 2), (2, 2, 1), (3, 1, 1);
+
+INSERT INTO affiliations (
+  id, name, ror_id, city, region, country_code, website_url
+) VALUES
+  (1, 'Synthetic Biomedical Institute', 'https://ror.org/000000001', 'Fixture City', NULL, 'JP', 'https://example.test/institutes/biomedical'),
+  (2, 'Synthetic Molecular Research Center', 'https://ror.org/000000002', 'Example City', NULL, 'US', 'https://example.test/institutes/molecular');
+
+INSERT INTO author_affiliations (
+  author_id, affiliation_id, study_id, department, role_title, is_current,
+  source_url, verification_status, verified_at
+) VALUES
+  (1, 1, NULL, 'Department of Synthetic Medicine', 'Fixture researcher', 1, 'https://example.test/authors/1', 'human_verified', '2026-08-12T00:00:00.000Z'),
+  (1, 1, 1, 'Department of Synthetic Medicine', NULL, 0, 'https://example.test/studies/1', 'source_recorded', NULL),
+  (2, 2, NULL, 'Hydrogen Fixture Unit', 'Fixture researcher', 1, 'https://example.test/authors/2', 'human_verified', '2026-08-12T00:00:00.000Z'),
+  (2, 2, 1, 'Hydrogen Fixture Unit', NULL, 0, 'https://example.test/studies/1', 'source_recorded', NULL),
+  (2, 2, 2, 'Hydrogen Fixture Unit', NULL, 0, 'https://example.test/studies/2', 'source_recorded', NULL);
+
+INSERT INTO author_contacts (
+  author_id, contact_type, label, contact_value, is_primary, is_public,
+  source_url, verification_status, verified_at
+) VALUES
+  (1, 'email', '勤務先メール', 'synthetic.author.a@example.test', 1, 1, 'https://example.test/authors/1', 'human_verified', '2026-08-12T00:00:00.000Z'),
+  (2, 'institutional_profile', '研究者プロフィール', 'https://example.test/authors/2', 1, 1, 'https://example.test/authors/2', 'human_verified', '2026-08-12T00:00:00.000Z');
 
 INSERT INTO classifications (
   study_id, species_type, study_design, randomized, blinded, prospective, peer_reviewed

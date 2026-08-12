@@ -12,7 +12,10 @@
 <body>
   <header class="site-header">
     <a class="brand" href="/">Biomedical Hydrogen Evidence</a>
-    <span class="phase-label">Open evidence</span>
+    <nav class="header-nav" aria-label="メインナビゲーション">
+      <a href="/authors">著者データベース</a>
+      <span class="phase-label">Open evidence</span>
+    </nav>
   </header>
 
   <main>
@@ -48,6 +51,9 @@
             </label>
             <label>疾患・状態
               <select id="condition" name="condition"><option value="">すべて</option></select>
+            </label>
+            <label>著者
+              <select id="author" name="authorId"><option value="">すべて</option></select>
             </label>
             <label>開始年
               <input id="year-from" name="yearFrom" type="number" min="1800" max="2200" inputmode="numeric">

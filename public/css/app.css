@@ -57,6 +57,14 @@ footer {
   text-decoration: none;
 }
 
+.header-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+}
+
 .phase-label,
 .badge {
   display: inline-block;
@@ -230,6 +238,9 @@ a:focus-visible {
 }
 
 .study-main { padding-block: var(--space-4) 4rem; }
+.directory-main { padding-block: var(--space-4) 4rem; }
+.directory-intro { max-width: 48rem; }
+.directory-search { margin-block: var(--space-3) var(--space-4); }
 .study-title { max-width: 35ch; margin-top: 0.35rem; font-size: clamp(1.75rem, 6vw, 2.75rem); }
 .study-section { margin-top: var(--space-4); }
 .study-section h2 { padding-bottom: 0.4rem; border-bottom: 1px solid var(--color-line); }
@@ -253,6 +264,11 @@ a:focus-visible {
 }
 
 .data-card h3 { margin-top: 0; }
+.data-card p:last-child { margin-bottom: 0; }
+.card-list { display: grid; gap: var(--space-2); }
+.card-list .data-card { margin-top: 0; }
+.contact-notice { color: var(--color-muted); font-size: 0.9rem; }
+.empty-state { color: var(--color-muted); }
 
 footer {
   padding-block: var(--space-3) var(--space-4);
@@ -266,9 +282,9 @@ footer p { margin: 0.25rem 0; }
 @media (min-width: 42rem) {
   .search-row { grid-template-columns: 1fr auto; }
   .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (min-width: 62rem) {
   .filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-
