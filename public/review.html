@@ -77,6 +77,7 @@
           <select id="review-status">
             <option value="pending">未判定</option>
             <option value="needs_review">保留済み</option>
+            <option value="include">採用済み</option>
           </select>
         </label>
         <label>対象キュー
@@ -168,6 +169,40 @@
       <p id="bookmark-summary" class="dialog-help"></p>
       <button id="bookmark-export" type="button" class="secondary bookmark-export">ブックマークCSVを書き出す</button>
       <div id="bookmark-results" class="bookmark-results" aria-live="polite"></div>
+    </div>
+  </dialog>
+
+  <dialog id="social-dialog" class="social-dialog" aria-labelledby="social-dialog-title">
+    <div class="dialog-card social-dialog-card">
+      <div class="dialog-heading dialog-heading-sticky">
+        <h2 id="social-dialog-title">日本語要約・SNS投稿</h2>
+        <button id="close-social" type="button" class="icon-button" aria-label="閉じる"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>
+      </div>
+      <p id="social-source-title" class="social-source-title"></p>
+      <form id="social-form" class="social-form">
+        <label>投稿フォーマット
+          <select id="social-format">
+            <option value="x">X向け（約280文字）</option>
+            <option value="standard">汎用SNS向け（やや詳しく）</option>
+          </select>
+        </label>
+        <label>追加指示（任意）
+          <textarea id="social-instruction" maxlength="2000" rows="4" placeholder="例：研究対象と主要な限界を特に明確にする"></textarea>
+        </label>
+        <p class="dialog-help">タイトルと取得可能な抄録をOpenAIへ直接送り、要約と投稿文を同時に生成します。DeepL対訳は経由しません。</p>
+        <button id="social-generate" type="submit" class="primary-dialog">OpenAIで生成</button>
+      </form>
+      <p id="social-status" class="abstract-status" aria-live="polite" hidden></p>
+      <section id="social-result" class="social-result" hidden>
+        <label>日本語要約
+          <textarea id="social-summary" rows="8" readonly></textarea>
+        </label>
+        <label>コピー用SNS投稿
+          <textarea id="social-post" rows="10" readonly></textarea>
+        </label>
+        <button id="social-copy" type="button" class="primary">SNS投稿をコピー</button>
+        <p class="abstract-notice">生成結果は抄録ベースの下書きです。投稿前に原資料と数値・研究デザイン・表現を確認してください。生成結果はD1へ保存しません。</p>
+      </section>
     </div>
   </dialog>
 

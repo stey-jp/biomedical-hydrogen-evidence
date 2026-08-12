@@ -7,12 +7,13 @@ import {
   verifyReviewSession,
 } from "../review/auth.js";
 import { createReviewRepository, reviewHints } from "../repositories/review.js";
+import { createReviewSocialPostService, ReviewSocialPostError } from "../services/review-social-posts.js";
 import { createReviewTranslationService, ReviewTranslationError } from "../services/review-translations.js";
 import { createDeepLClient } from "../translation/deepl.js";
 import { errorResponse, jsonResponse } from "../utils/responses.js";
 
 const decisions = new Set(["include", "exclude", "duplicate", "needs_review"]);
-const queueReviewStatuses = new Set(["pending", "needs_review"]);
+const queueReviewStatuses = new Set(["pending", "needs_review", "include"]);
 const textEncoder = new TextEncoder();
 
 function securedJson(request, value, init = {}) {
@@ -91,6 +92,14 @@ function cleanText(value, field, maxLength) {
   if (typeof value !== "string") throw new TypeError(`${field} is required`);
   const text = value.trim();
   if (!text || text.length > maxLength) throw new RangeError(`${field} must contain 1–${maxLength} characters`);
+  return text;
+}
+
+function optionalText(value, field, maxLength) {
+  if (value == null || value === "") return "";
+  if (typeof value !== "string") throw new TypeError(`${field} must be a string`);
+  const text = value.trim();
+  if (text.length > maxLength) throw new RangeError(`${field} must contain at most ${maxLength} characters`);
   return text;
 }
 
@@ -314,6 +323,19 @@ function translationService(env, repository, options, now) {
   });
 }
 
+function socialPostService(env, repository, options, now) {
+  return options.socialPostService ?? createReviewSocialPostService({
+    repository,
+    openAIApiKey: env.OPENAI_REVIEW_API_KEY,
+    openAIModel: env.OPENAI_REVIEW_MODEL || "gpt-5.6-luna",
+    fetchImpl: options.fetchImpl,
+    springerNatureApiKey: env.SPRINGER_NATURE_API_KEY,
+    elsevierApiKey: env.ELSEVIER_API_KEY,
+    openAlexApiKey: env.OPENALEX_API_KEY,
+    now,
+  });
+}
+
 function translationErrorResponse(request, error) {
   if (error instanceof ReviewTranslationError) {
     return securedError(request, error.status, error.code, error.message);
@@ -353,6 +375,30 @@ async function translateAbstract(request, service) {
     return securedJson(request, { data: await service.translateAbstract(candidateKey) });
   } catch (error) {
     return translationErrorResponse(request, error);
+  }
+}
+
+async function generateSocialPost(request, service) {
+  if (!sameOrigin(request)) return securedError(request, 403, "invalid_origin", "Same-origin request required.");
+  let input;
+  try {
+    const body = await jsonBody(request);
+    input = {
+      candidateKey: cleanText(body.candidateKey, "candidateKey", 240),
+      reviewer: cleanText(body.reviewer, "reviewer", 200),
+      format: cleanText(body.format, "format", 20),
+      customInstruction: optionalText(body.customInstruction, "customInstruction", 2000),
+    };
+  } catch (error) {
+    return securedError(request, 400, "invalid_request", error.message);
+  }
+  try {
+    return securedJson(request, { data: await service.generate(input) });
+  } catch (error) {
+    if (error instanceof ReviewSocialPostError) {
+      return securedError(request, error.status, error.code, error.message);
+    }
+    throw error;
   }
 }
 
@@ -432,6 +478,9 @@ export async function handleReview(request, env, options = {}) {
   }
   if (url.pathname === "/api/review/v1/translations/abstract" && request.method === "POST") {
     return translateAbstract(request, translationService(env, repository, options, now));
+  }
+  if (url.pathname === "/api/review/v1/social-posts" && request.method === "POST") {
+    return generateSocialPost(request, socialPostService(env, repository, options, now));
   }
   if (url.pathname === "/api/review/v1/duplicates" && request.method === "GET") {
     const candidateKey = url.searchParams.get("candidateKey")?.trim();

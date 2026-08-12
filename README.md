@@ -54,7 +54,7 @@ offline managed commands: discovery → extraction → human review
 
 ## Evidence model
 
-Study、authors、classification、population、複数interventions、複数outcomes、safety、research transparencyを分離しています。数値は元の値・単位を失わず、必要な場合だけ正規化値・単位を併記します。研究全体を単純なpositive/negativeには分類しません。
+Study、authors、author affiliations、公開された職務上のcontact、classification、population、複数interventions、複数outcomes、safety、research transparencyを分離しています。所属は論文記載時点と現所属を分けて記録でき、連絡先には出典と確認状態を必須にします。数値は元の値・単位を失わず、必要な場合だけ正規化値・単位を併記します。研究全体を単純なpositive/negativeには分類しません。
 
 ## Provenance
 
@@ -74,11 +74,11 @@ Consensusは同一fieldの正規化値を比較します。各providerの短いs
 
 ## Search
 
-検索時はD1の通常index、FTS5、明示的な英語・日本語alias normalizationだけを使います。embeddings、Vectorize、外部検索、LLM query rewritingはありません。cursor paginationで読み出し件数を制限します。
+検索時はD1の通常index、FTS5、明示的な英語・日本語alias normalizationだけを使います。著者はstable author IDで絞り込み、同姓同名を名前文字列だけで統合しません。embeddings、Vectorize、外部検索、LLM query rewritingはありません。cursor paginationで読み出し件数を制限します。
 
 ## Web
 
-モバイル優先のHTML、Vanilla CSS、最小限のVanilla JavaScriptです。`/`で検索し、`/study?id={publicId}`で研究対象、デザイン、水素条件、outcomes、safety、funding/COI、provenance、verificationを確認できます。
+モバイル優先のHTML、Vanilla CSS、最小限のVanilla JavaScriptです。`/`で著者を含む条件から検索し、`/study?id={publicId}`で研究詳細、`/authors`と`/author?id={authorId}`で著者の所属・公開連絡先・収録研究を確認できます。
 
 同梱データはすべてsynthetic fixture / test onlyです。実在研究として表示せず、偽DOI・PMID・PMCIDを作成していません。
 
@@ -101,6 +101,8 @@ MCP serverはD1の保存済みEvidenceを返すだけです。回答を生成す
 - `GET /api/v1/studies`
 - `GET /api/v1/studies/{publicId}`
 - `GET /api/v1/studies/{publicId}/evidence`
+- `GET /api/v1/authors`
+- `GET /api/v1/authors/{authorId}`
 - `GET /api/v1/meta/filters`
 - `GET /healthz`
 
@@ -108,7 +110,7 @@ Schemaは[docs/openapi.yaml](docs/openapi.yaml)を参照してください。
 
 ## AI cost model
 
-Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthropic、Gemini、Workers AI、その他LLM APIを呼びません。つまり`query-time AI = 0`です。Phase 1にCron、Queues、Workflows、公開extraction endpointはありません。
+公開Web検索、REST API、MCP、研究詳細の通常利用では、OpenAI、Anthropic、Gemini、Workers AI、その他LLM APIを呼びません。非公開review UIだけは、認証済みユーザーがブックマーク論文の「日本語SNS投稿を作る」を明示実行した場合に限り、取得した抄録からOpenAI Responses APIを1回呼びます。モデルは`gpt-5.6-luna`、推論強度は`max`です。DeepLは忠実なタイトル・要旨対訳、OpenAIは日本語要約・SNS下書きに役割を分け、両APIを同じ操作で直列実行しません。公開extraction endpointはありません。
 
 ## Data sources
 

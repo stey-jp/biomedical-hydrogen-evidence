@@ -160,6 +160,15 @@ export function createReviewRepository(db) {
       return result.results ?? [];
     },
 
+    async getBookmarkedCandidate(reviewer, candidateKey) {
+      return db.prepare(`SELECT ${bookmarkedCandidateColumns}
+        FROM candidate_review_bookmarks b
+        JOIN study_candidates c ON c.id = b.candidate_id
+        ${journalMetricJoin}
+        WHERE b.reviewer = ? AND c.candidate_key = ?
+        LIMIT 1`).bind(reviewer, candidateKey).first();
+    },
+
     async getBookmarksForExport(reviewer) {
       const result = await db.prepare(`SELECT
           b.created_at AS bookmarked_at,

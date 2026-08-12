@@ -10,18 +10,19 @@ Phase 5は候補screeningとfield verificationを別々に扱います。AIの�
 
 本番Workerの`/review`は、非公開candidate tableを直接screeningするモバイル優先の管理画面です。一般公開APIとは分離され、`REVIEW_ADMIN_TOKEN`でログインした同一originのブラウザだけが読み書きできます。本番HTTP requestはHTTPSへredirectし、トークンそのものはブラウザへ保存せず、ログイン後は30日で失効する署名済み`Secure` / `HttpOnly` / `SameSite=Strict` Cookieを使います。reviewer identifierはD1の非公開監査履歴と認証済みCSVだけに保持し、一般公開APIへ返しません。
 
-初回だけ32文字以上のランダムな管理トークンと、DeepL API Free、OpenAlex、Springer Nature、ElsevierのAPIキーをCloudflare Secretへ登録し、Workerをdeployします。キーはGit、`.dev.vars.example`、ブラウザへ保存しません。
+初回だけ32文字以上のランダムな管理トークンと、DeepL API Free、OpenAI、OpenAlex、Springer Nature、ElsevierのAPIキーをCloudflare Secretへ登録し、Workerをdeployします。OpenAIは`gpt-5.6-luna`を`reasoning.effort: max`で呼び出します。キーはGit、`.dev.vars.example`、ブラウザへ保存しません。
 
 ```powershell
 npx wrangler secret put REVIEW_ADMIN_TOKEN
 npx wrangler secret put DEEPL_API_KEY
+npx wrangler secret put OPENAI_REVIEW_API_KEY
 npx wrangler secret put OPENALEX_API_KEY
 npx wrangler secret put SPRINGER_NATURE_API_KEY
 npx wrangler secret put ELSEVIER_API_KEY
 npm run deploy
 ```
 
-以後はスマートフォンから`https://<worker-domain>/review`を開きます。優先候補、要確認候補、対象外の可能性がある候補を切り替え、reviewer identifierを入力して、`採用`、`対象外`、`保留`、`重複`を選びます。保存後は次の未判定候補へ進み、D1から再開できるためPCは不要です。保留した候補はオプション設定の「表示する判定状態」を「保留済み」へ切り替えると再表示でき、採用・対象外・重複へ再判定できます。DeepLキーが未設定・一時利用不能でも、英語原文による判定と保存は継続できます。
+以後はスマートフォンから`https://<worker-domain>/review`を開きます。優先候補、要確認候補、対象外の可能性がある候補を切り替え、reviewer identifierを入力して、`採用`、`対象外`、`保留`、`重複`を選びます。保存後は次の未判定候補へ進み、D1から再開できるためPCは不要です。保留した候補はオプション設定の「表示する判定状態」を「保留済み」へ切り替えると再表示でき、採用・対象外・重複へ再判定できます。同様に「採用済み」を選ぶと採用済み候補を再表示し、対象外・保留・重複へ再判定できます。DeepLキーが未設定・一時利用不能でも、英語原文による判定と保存は継続できます。
 
 - `採用`と`保留`は1 tap、`対象外`は定型理由を選ぶ2 tapです。
 - `重複`は同一正規化タイトルの候補を自動表示します。候補がなければcandidate key、DOI、PMID、PMCIDで検索し、重複先を特定できた場合だけ保存します。不確実なら`保留`にします。

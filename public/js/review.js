@@ -8,6 +8,8 @@ const state = {
   abstracts: new Map(),
   bookmarks: new Map(),
   bookmarkReviewer: "",
+  socialCandidate: null,
+  socialPosts: new Map(),
   reviewers: [],
   transitioning: false,
 };
@@ -22,6 +24,9 @@ const elements = Object.fromEntries([
   "reason-form", "reason-text", "toast",
   "abstract-dialog", "abstract-content", "close-abstract",
   "bookmark-dialog", "bookmark-results", "bookmark-summary", "bookmark-export", "close-bookmarks",
+  "social-dialog", "social-dialog-title", "social-source-title", "social-form", "social-format",
+  "social-instruction", "social-generate", "social-status", "social-result", "social-summary",
+  "social-post", "social-copy", "close-social",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const excludeReasons = {
@@ -54,6 +59,22 @@ const abstractErrorMessages = {
   abstract_fetch_failed: "要旨の取得に失敗しました。時間をおいて再試行してください。",
   translation_provider_failed: "要旨は取得できましたが、翻訳に失敗しました。時間をおいて再試行してください。",
 };
+
+const socialErrorMessages = {
+  generation_disabled: "OPENAI_REVIEW_API_KEYの設定後に生成できます。",
+  generation_rate_limited: "OpenAI APIの利用上限に達しました。時間をおいて再試行してください。",
+  generation_timeout: "生成がタイムアウトしました。時間をおいて再試行してください。",
+  generation_refused: "この論文では投稿案を生成できませんでした。追加指示を見直してください。",
+  generation_incomplete: "生成が完了しませんでした。もう一度お試しください。",
+  generation_invalid_output: "生成結果の形式を確認できませんでした。もう一度お試しください。",
+  generation_provider_failed: "OpenAI APIで生成できませんでした。時間をおいて再試行してください。",
+  bookmark_not_found: "この論文は現在のReviewerのブックマークにありません。",
+  pubmed_abstract_missing: "PubMedには抄録が収録されていないため生成できません。",
+  abstract_missing: "利用可能な抄録が収録されていないため生成できません。",
+  abstract_fetch_failed: "抄録を取得できませんでした。時間をおいて再試行してください。",
+};
+
+const defaultSocialInstruction = "専門知識のない読者にも分かる表現にし、研究対象・方法・主要結果・限界を省かないでください。宣伝的な表現や効果の断定は避けてください。";
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers);
@@ -240,6 +261,7 @@ function updateCandidateControls(candidate) {
   disableDecisions(state.transitioning || !candidate);
   elements["needs-review"].textContent = candidate?.reviewStatus === "needs_review" ? "保留済み" : "保留";
   if (candidate?.reviewStatus === "needs_review") elements["needs-review"].disabled = true;
+  if (candidate?.reviewStatus === "include") elements.include.disabled = true;
 }
 
 async function animateCandidate(phase, decision) {
@@ -459,6 +481,10 @@ function bookmarkItem(candidate) {
   show.type = "button";
   show.addEventListener("click", () => showBookmarkedCandidate(candidate));
   actions.append(show);
+  const createPost = text("button", "日本語SNS投稿を作る", "primary bookmark-social");
+  createPost.type = "button";
+  createPost.addEventListener("click", () => openSocialPost(candidate));
+  actions.append(createPost);
   const remove = text("button", "ブックマーク解除", "bookmark-remove");
   remove.type = "button";
   remove.addEventListener("click", () => toggleBookmark(candidate, false));
@@ -527,6 +553,80 @@ async function toggleBookmark(candidate, bookmarked) {
     showToast(next ? "論文をブックマークしました" : "ブックマークを解除しました");
   } catch (error) {
     showToast(error.message);
+  }
+}
+
+function socialCacheKey(candidate) {
+  return [
+    candidate.candidateKey,
+    elements["social-format"].value,
+    elements["social-instruction"].value.trim(),
+  ].join("\u0000");
+}
+
+function resetSocialResult() {
+  elements["social-status"].hidden = true;
+  elements["social-result"].hidden = true;
+}
+
+function renderSocialResult(result) {
+  elements["social-summary"].value = `【${result.titleJa}】\n\n${result.summaryJa}`;
+  elements["social-post"].value = result.socialPost;
+  elements["social-status"].textContent = `${result.provider} · ${result.model} · ${result.source || "抄録"}`;
+  elements["social-status"].hidden = false;
+  elements["social-result"].hidden = false;
+}
+
+async function openSocialPost(candidate) {
+  state.socialCandidate = candidate;
+  await closeDialog(elements["bookmark-dialog"]);
+  elements["social-source-title"].textContent = candidate.title;
+  resetSocialResult();
+  openDialog(elements["social-dialog"]);
+  const cached = state.socialPosts.get(socialCacheKey(candidate));
+  if (cached) renderSocialResult(cached);
+}
+
+async function generateSocialPost() {
+  const candidate = state.socialCandidate;
+  if (!candidate) return;
+  const reviewer = reviewerValue();
+  if (!reviewer) {
+    elements["social-status"].textContent = "Reviewer identifierを入力してください。";
+    elements["social-status"].hidden = false;
+    return;
+  }
+  const cacheKey = socialCacheKey(candidate);
+  const cached = state.socialPosts.get(cacheKey);
+  if (cached) {
+    renderSocialResult(cached);
+    return;
+  }
+  elements["social-result"].hidden = true;
+  elements["social-status"].textContent = "抄録を取得し、日本語要約とSNS投稿を生成しています…";
+  elements["social-status"].hidden = false;
+  elements["social-generate"].disabled = true;
+  const originalLabel = elements["social-generate"].textContent;
+  elements["social-generate"].textContent = "生成中…";
+  try {
+    const result = await api("/api/review/v1/social-posts", {
+      method: "POST",
+      body: JSON.stringify({
+        candidateKey: candidate.candidateKey,
+        reviewer,
+        format: elements["social-format"].value,
+        customInstruction: elements["social-instruction"].value.trim(),
+      }),
+    });
+    state.socialPosts.set(cacheKey, result.data);
+    renderSocialResult(result.data);
+  } catch (error) {
+    elements["social-status"].textContent = socialErrorMessages[error.code]
+      ?? "日本語要約・SNS投稿を生成できませんでした。時間をおいて再試行してください。";
+    elements["social-status"].hidden = false;
+  } finally {
+    elements["social-generate"].disabled = false;
+    elements["social-generate"].textContent = originalLabel;
   }
 }
 
@@ -719,6 +819,7 @@ elements["export-csv"].addEventListener("click", () => {
 });
 elements["close-abstract"].addEventListener("click", () => closeDialog(elements["abstract-dialog"]));
 elements["close-bookmarks"].addEventListener("click", () => closeDialog(elements["bookmark-dialog"]));
+elements["close-social"].addEventListener("click", () => closeDialog(elements["social-dialog"]));
 elements["close-reason"].addEventListener("click", () => closeDialog(elements["reason-dialog"]));
 elements["show-bookmarks"].addEventListener("click", async () => {
   if (!reviewerValue()) {
@@ -741,8 +842,36 @@ elements["bookmark-export"].addEventListener("click", () => {
   if (!reviewer) return;
   location.assign(`/api/review/v1/bookmarks/export?reviewer=${encodeURIComponent(reviewer)}`);
 });
+elements["social-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  localStorage.setItem("candidate-review-social-format", elements["social-format"].value);
+  localStorage.setItem("candidate-review-social-instruction", elements["social-instruction"].value);
+  generateSocialPost();
+});
+elements["social-format"].addEventListener("change", resetSocialResult);
+elements["social-instruction"].addEventListener("input", resetSocialResult);
+elements["social-copy"].addEventListener("click", async () => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(elements["social-post"].value);
+    } else {
+      elements["social-post"].focus();
+      elements["social-post"].select();
+      if (!document.execCommand("copy")) throw new Error("Copy failed");
+    }
+    showToast("SNS投稿をコピーしました", "include");
+  } catch {
+    showToast("コピーできませんでした。投稿欄を選択してコピーしてください");
+  }
+});
 
 elements.reviewer.value = localStorage.getItem("candidate-reviewer") ?? "";
+elements["social-instruction"].value = localStorage.getItem("candidate-review-social-instruction")
+  ?? defaultSocialInstruction;
+const savedSocialFormat = localStorage.getItem("candidate-review-social-format");
+if ([...elements["social-format"].options].some((option) => option.value === savedSocialFormat)) {
+  elements["social-format"].value = savedSocialFormat;
+}
 const savedHint = localStorage.getItem("candidate-review-hint");
 if ([...elements["screening-hint"].options].some((option) => option.value === savedHint)) {
   elements["screening-hint"].value = savedHint;

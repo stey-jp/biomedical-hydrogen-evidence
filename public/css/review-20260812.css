@@ -316,8 +316,29 @@ dialog.is-visible::backdrop { background: rgb(10 20 15 / 55%); }
 .bookmark-item-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .bookmark-item-actions button,
 .bookmark-item-actions a { min-height: 42px; }
+.bookmark-social { grid-column: 1 / -1; }
 .bookmark-remove { border: 1px solid #d9aaa7; border-radius: 10px; background: #fff6f5; color: var(--danger); font-weight: 700; }
 .bookmark-item-actions .bookmark-remove { grid-column: 1 / -1; }
+
+.social-dialog { width: min(calc(100% - 18px), 680px); }
+.social-dialog-card { max-height: calc(100dvh - 18px); overflow: auto; }
+.social-source-title {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+.social-form,
+.social-result { display: grid; gap: 12px; }
+.social-result {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.social-result textarea[readonly] { background: #f8faf9; }
+.social-result .primary { width: 100%; }
 
 .toast {
   --toast-color: 24 35 29;

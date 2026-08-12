@@ -163,6 +163,7 @@ test("review repository scopes bookmarks by reviewer with bound statements", asy
           prepared.push({ sql, bindings });
           return {
             async all() { return { results: [] }; },
+            async first() { return null; },
             async run() { return { success: true }; },
           };
         },
@@ -171,6 +172,7 @@ test("review repository scopes bookmarks by reviewer with bound statements", asy
   };
   const repository = createReviewRepository(db);
   await repository.getBookmarks("reviewer-1");
+  await repository.getBookmarkedCandidate("reviewer-1", candidate.candidate_key);
   await repository.getBookmarksForExport("reviewer-1");
   await repository.setBookmark({
     candidateKey: candidate.candidate_key,
@@ -184,12 +186,14 @@ test("review repository scopes bookmarks by reviewer with bound statements", asy
     bookmarked: false,
     createdAt: "2026-08-11T05:00:00.000Z",
   });
-  assert.equal(prepared.length, 4);
+  assert.equal(prepared.length, 5);
   assert.match(prepared[0].sql, /WHERE b\.reviewer = \?/u);
   assert.deepEqual(prepared[0].bindings, ["reviewer-1", 500]);
-  assert.match(prepared[2].sql, /ON CONFLICT\(reviewer, candidate_id\)/u);
-  assert.deepEqual(prepared[2].bindings, ["reviewer-1", "2026-08-11T05:00:00.000Z", candidate.candidate_key]);
-  assert.match(prepared[3].sql, /DELETE FROM candidate_review_bookmarks/u);
+  assert.match(prepared[1].sql, /WHERE b\.reviewer = \? AND c\.candidate_key = \?/u);
+  assert.deepEqual(prepared[1].bindings, ["reviewer-1", candidate.candidate_key]);
+  assert.match(prepared[3].sql, /ON CONFLICT\(reviewer, candidate_id\)/u);
+  assert.deepEqual(prepared[3].bindings, ["reviewer-1", "2026-08-11T05:00:00.000Z", candidate.candidate_key]);
+  assert.match(prepared[4].sql, /DELETE FROM candidate_review_bookmarks/u);
   assert.ok(prepared.every((statement) => !statement.sql.includes("reviewer-1")));
 });
 
@@ -249,6 +253,21 @@ test("review API authenticates, reads a bounded queue, and saves an audited deci
   });
   assert.equal(heldQueueResponse.status, 200);
   assert.equal((await heldQueueResponse.json()).data[0].reviewStatus, "needs_review");
+
+  const includedQueueResponse = await handleReview(request("/api/review/v1/queue?reviewStatus=include", {
+    headers: { cookie },
+  }), { REVIEW_ADMIN_TOKEN: secret }, {
+    repository: {
+      ...repository,
+      async getQueue(input) {
+        assert.deepEqual(input, { screeningHint: "likely_biomedical", reviewStatus: "include", limit: 20 });
+        return [{ ...candidate, review_status: "include" }];
+      },
+    },
+    now: () => now,
+  });
+  assert.equal(includedQueueResponse.status, 200);
+  assert.equal((await includedQueueResponse.json()).data[0].reviewStatus, "include");
 
   const reviewersResponse = await handleReview(request("/api/review/v1/reviewers", {
     headers: { cookie },
@@ -410,6 +429,57 @@ test("review translation API returns a stable code when DeepL is unavailable", a
   }), { REVIEW_ADMIN_TOKEN: secret }, { translationService, now: () => now });
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error.code, "translation_disabled");
+});
+
+test("review social post API is authenticated, same-origin, and forwards bounded prompt options", async () => {
+  const { cookie } = await loginCookie();
+  let submitted;
+  const socialPostService = {
+    async generate(input) {
+      submitted = input;
+      return {
+        candidateKey: input.candidateKey,
+        format: input.format,
+        titleJa: "分子状水素候補",
+        summaryJa: "日本語要約",
+        socialPost: "SNS投稿",
+        provider: "OpenAI",
+        model: "test-model",
+      };
+    },
+  };
+  const headers = { cookie, origin: "https://example.test", "content-type": "application/json" };
+  const response = await handleReview(request("/api/review/v1/social-posts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      candidateKey: candidate.candidate_key,
+      reviewer: "reviewer-1",
+      format: "x",
+      customInstruction: "  限界を明確にする。  ",
+    }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { socialPostService, repository: {}, now: () => now });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(body.data.socialPost, "SNS投稿");
+  assert.deepEqual(submitted, {
+    candidateKey: candidate.candidate_key,
+    reviewer: "reviewer-1",
+    format: "x",
+    customInstruction: "限界を明確にする。",
+  });
+
+  const crossOrigin = await handleReview(request("/api/review/v1/social-posts", {
+    method: "POST",
+    headers: { ...headers, origin: "https://evil.example" },
+    body: JSON.stringify({
+      candidateKey: candidate.candidate_key,
+      reviewer: "reviewer-1",
+      format: "x",
+    }),
+  }), { REVIEW_ADMIN_TOKEN: secret }, { socialPostService, repository: {}, now: () => now });
+  assert.equal(crossOrigin.status, 403);
 });
 
 test("review bookmark API saves, lists, and exports reviewer-scoped candidates", async () => {

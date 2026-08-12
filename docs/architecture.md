@@ -14,7 +14,8 @@ Cloudflare Worker
 ├─ /mcp ──────┼─ Study service ─ Repository ─ D1
 ├─ /healthz ──┘
 └─ /api/review/v1/* ─┬─ Review repository ── D1 audit events + reviewer bookmarks + title translation cache
-                     └─ DeepL API Free + Europe PMC / Crossref / publisher APIs / OpenAlex / OpenAIRE
+                     ├─ DeepL API Free + Europe PMC / Crossref / publisher APIs / OpenAlex / OpenAIRE
+                     └─ OpenAI Responses API（明示操作の日本語要約・SNS下書き）
 
 iOS / Android ── HTTPS GET ──► first-party REST API
 ```
@@ -36,7 +37,7 @@ generated review manifest + D1 import SQL
 study_candidates (not public search) ── human screening ──► studies
 ```
 
-Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳routeも同じ認証・same-origin・rate limit境界内に置き、provider Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、外部sourceから取得した要旨と要旨訳は永続化しません。
+Phase 3〜4とfield verificationは同じ公開request boundaryの外側です。Phase 5のcandidate screeningだけは、管理トークンで保護したsame-origin routeから実行できます。管理画面の翻訳・SNS下書きrouteも同じ認証・same-origin・rate limit境界内に置き、provider Secretをブラウザへ渡しません。タイトル訳だけを原文hash付きでD1へcacheし、外部sourceから取得した要旨、要旨訳、OpenAI生成結果は永続化しません。SNS下書きはブックマーク済み候補に限定し、ユーザーの明示操作1回につきOpenAI Responses APIを1回だけ呼びます。
 
 ```text
 authorized local source bundle
@@ -62,7 +63,7 @@ D1 structured Evidence + immutable review history
 
 ## D1 model
 
-Bibliography、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。discovery run、query、未確認candidate、source recordは公開研究modelから分離し、候補投入だけで検索結果へ混入しない構造です。Extraction run/source hash/provider call/Evidence check/consensus historyと、candidate/field/study review eventを追記可能な別tableで監査します。
+Bibliography、authors、affiliations、public professional contacts、classification、population、interventions、outcomes、safety、transparency、provenance、extractions、consensus、verificationを分離します。所属はauthor-study関係または現所属として時点を表現し、contactはsourceと公開可否を持ちます。過度な正規化は避けつつ、複数intervention/outcome、field-level provenance、モデルごとの独立抽出を表現します。discovery run、query、未確認candidate、source recordは公開研究modelから分離し、候補投入だけで検索結果へ混入しない構造です。Extraction run/source hash/provider call/Evidence check/consensus historyと、candidate/field/study review eventを追記可能な別tableで監査します。
 
 検索用FTS5 documentはcontrolled ingestion時にmaterializeします。query-timeに複数tableを連結して全文検索documentを再構築しません。日本語の主要専門語は明示的なaliasでcanonical English termへ変換します。
 
@@ -70,8 +71,8 @@ Bibliography、classification、population、interventions、outcomes、safety�
 
 - cursor pagination、API max 20、MCP max 10
 - `limit + 1`だけ取得し、count queryを省略
-- public ID/DOI/PMID/PMCIDのunique index
-- species/design、route、condition、year、verificationのindex
+- study/author public ID、DOI、PMID、PMCIDのunique index
+- species/design、route、condition、author、year、verificationのindex
 - FTS5 virtual table
 - study detailの関連collectionはD1 `batch()`でまとめる
 - 明示列のみ取得し、`SELECT *`を使用しない
@@ -94,4 +95,4 @@ Machine consensusは`machine_extracted`、`machine_checked`、`needs_human_revie
 
 ## Security
 
-一般公開APIはread-only、same-origin Webと公式native clients向けです。本番のHTML/API HTTP requestはHTTPSへ恒久redirectし、HTMLにはHSTS、CSP、frame/referrer/permission制限を付与します。非公開review routeは別Rate Limiting binding、32文字以上のCloudflare Secret、30日で失効するHMAC署名済み`Secure` / `HttpOnly` / `SameSite=Strict` Cookie、same-origin write検査で保護します。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。candidate screeningは公開studyへの昇格を行わず、candidate snapshot hashと変更前statusをimmutable eventへ記録します。reviewer identifierはD1の非公開監査履歴と認証済みexportだけに保持し、一般公開APIへ返しません。native clientsもHTTPS GETだけを使用します。Provider secretと`DEEPL_API_KEY`はCloudflare Secretsまたはlocal `.dev.vars`を使い、Git・D1・ブラウザへ保存しません。
+一般公開APIはread-only、same-origin Webと公式native clients向けです。本番のHTML/API HTTP requestはHTTPSへ恒久redirectし、HTMLにはHSTS、CSP、frame/referrer/permission制限を付与します。非公開review routeは別Rate Limiting binding、32文字以上のCloudflare Secret、30日で失効するHMAC署名済み`Secure` / `HttpOnly` / `SameSite=Strict` Cookie、same-origin write検査で保護します。SQL parameter binding、入力長、enum、年範囲、limit、cursor、public IDを検証します。candidate screeningは公開studyへの昇格を行わず、candidate snapshot hashと変更前statusをimmutable eventへ記録します。reviewer identifierはD1の非公開監査履歴と認証済みexportだけに保持し、一般公開APIへ返しません。native clientsもHTTPS GETだけを使用します。Provider secret、`DEEPL_API_KEY`、`OPENAI_REVIEW_API_KEY`はCloudflare Secretsまたはlocal `.dev.vars`を使い、Git・D1・ブラウザへ保存しません。

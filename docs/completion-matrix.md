@@ -13,8 +13,8 @@
 
 ## Invariants
 
-- Web / API / MCP / native clientの通常requestはLLM providerを呼ばない。
-- AI/extraction/write endpointを公開しない。
+- 公開Web / API / MCP / native clientの通常requestはLLM providerを呼ばない。
+- AI extraction endpointを公開しない。OpenAI生成は認証・same-origin・rate limit済みreview routeの明示操作だけに限定する。
 - candidateはhuman screeningまで公開studyへ混入しない。
 - machine consensusは`human_verified`を生成・上書きしない。
 - PDF、全文、raw provider response、secretをGit/D1へ保存しない。
