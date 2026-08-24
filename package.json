@@ -28,7 +28,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "wrangler": "4.120.1"
+    "wrangler": "4.125.0"
   },
   "engines": {
     "node": ">=20"
